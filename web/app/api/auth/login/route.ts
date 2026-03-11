@@ -100,7 +100,7 @@ export async function POST(request: NextRequest) {
       .eq('id', authData.user.id)
 
     // ── 6. Build AuthUser response ─────────────────────
-    const role = userData.role as { name: string } | null
+    const role = (Array.isArray(userData.role) ? userData.role[0] : userData.role) as { name: string } | null
     const employee = userData.employee as { id: string }[] | null
 
     const authUser: AuthUser = {

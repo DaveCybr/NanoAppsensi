@@ -60,7 +60,7 @@ async function buildAuthUser(
   if (error || !data) return null
   if (!data.is_active) return null
 
-  const role = data.role as { name: string } | null
+  const role = (Array.isArray(data.role) ? data.role[0] : data.role) as { name: string } | null
   const employee = data.employee as { id: string }[] | null
 
   return {

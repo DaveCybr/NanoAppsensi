@@ -28,7 +28,7 @@ export async function detectFace(imageBase64: string): Promise<{
     const creds = getCredentials()
     const form  = new URLSearchParams({
       ...creds,
-      image_base_64:      imageBase64,
+      image_base64:       imageBase64,
       return_attributes: 'none',
     })
 

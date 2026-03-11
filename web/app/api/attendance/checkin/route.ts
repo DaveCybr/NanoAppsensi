@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server'
-import { toZonedTime, format } from 'date-fns-tz'
+import { StringLiteral } from 'typescript'
+import { parse } from 'date-fns'
+import { toZonedTime, format, fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireAuth, getClientIp } from '@/lib/utils/auth'
 import { writeAuditLog } from '@/lib/utils/audit'
@@ -120,16 +122,16 @@ export async function POST(request: NextRequest) {
     let late_minutes = 0
     let statusCode = 'PRESENT'
 
-    const shift = empShift?.shifts
+    const shift = (empShift as any)?.shifts
     if (shift) {
-      // shift.start_time format: HH:mm:ss
-      const [sh, sm, ss] = shift.start_time.split(':').map(Number)
+      // Parse shift start time and build it in tenant timezone
+      // today is already 'yyyy-MM-dd' in tenant timezone
+      const shiftTimeStr = `${today} ${shift.start_time}`
       
-      // Buat shiftStart di timezone tenant
-      const shiftStart = new Date(zonedNow)
-      shiftStart.setHours(sh, sm, ss || 0, 0)
+      const shiftStartLocal = parse(shiftTimeStr, 'yyyy-MM-dd HH:mm:ss', new Date())
+      const shiftStart = fromZonedTime(shiftStartLocal, timezone)
 
-      const diffMinutes = Math.floor((zonedNow.getTime() - shiftStart.getTime()) / 60000)
+      const diffMinutes = Math.floor((now.getTime() - shiftStart.getTime()) / 60000)
       const tolerance = shift.late_tolerance_minutes ?? 15
       
       late_minutes = Math.max(0, diffMinutes - tolerance)
@@ -138,10 +140,10 @@ export async function POST(request: NextRequest) {
 
     // 10. Upload foto
     const imageBuffer = Buffer.from(photo_base64, 'base64')
-    const fileName = `hr-photos/attendances/${employee.id}/${today}/checkin.jpg`
-    const { data: uploadData, error: uploadError } = await admin.storage
-      .from('hr-photos') // Assuming the bucket name is 'hr-photos' but the path starts with 'attendances'
-      .upload(`attendances/${employee.id}/${today}/checkin.jpg`, imageBuffer, {
+    const fileName = `attendances/${employee.id}/${today}/checkin.jpg`
+    const { error: uploadError } = await admin.storage
+      .from('hr-photos')
+      .upload(fileName, imageBuffer, {
         contentType: 'image/jpeg',
         upsert: true,
       })
@@ -151,7 +153,7 @@ export async function POST(request: NextRequest) {
       return serverError('Gagal mengunggah foto absensi.')
     }
 
-    const { data: { publicUrl } } = admin.storage.from('hr-photos').getPublicUrl(`attendances/${employee.id}/${today}/checkin.jpg`)
+    const { data: { publicUrl } } = admin.storage.from('hr-photos').getPublicUrl(fileName)
 
     // 11. Get status_id
     const { data: statusObj } = await admin

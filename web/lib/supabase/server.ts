@@ -3,6 +3,7 @@
 // Server-side Supabase client — untuk Route Handlers & Server Components
 // ============================================================
 import { createServerClient } from '@supabase/ssr'
+import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { Database } from '@/types/database'
 
@@ -19,9 +20,9 @@ export function createClient() {
         getAll() {
           return cookieStore.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: any[]) {
           try {
-            cookiesToSet.forEach(({ name, value, options }) => {
+            cookiesToSet.forEach(({ name, value, options }: any) => {
               cookieStore.set(name, value, options)
             })
           } catch {
@@ -54,10 +55,7 @@ export function createBearerClient(accessToken: string) {
 // ── Admin Client (bypass RLS) ─────────────────────────────
 // HANYA untuk operasi server-side yang perlu bypass RLS
 // Contoh: payroll processing, audit logging, seed data
-export function createAdminClient() {
-  // Lazy import untuk menghindari bundle di client
-  const { createClient: createSupabaseClient } = require('@supabase/supabase-js')
-
+export function createAdminClient(): SupabaseClient<Database> {
   return createSupabaseClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,

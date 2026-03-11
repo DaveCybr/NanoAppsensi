@@ -26,7 +26,7 @@ export async function PATCH(
     // 2. Get correction
     const { data: correction, error: corrError } = await admin
       .from('attendance_corrections')
-      .select('*, tenants(overtime_threshold_hours)')
+      .select('*')
       .eq('id', params.id)
       .eq('tenant_id', user.tenant_id)
       .single()
@@ -45,8 +45,15 @@ export async function PATCH(
 
     if (!hrEmployee) return badRequest('Data karyawan HR tidak ditemukan.')
 
+    // Get tenant config separately
+    const { data: tenantConfig } = await admin
+      .from('tenants')
+      .select('overtime_threshold_hours')
+      .eq('id', user.tenant_id)
+      .single()
+
     // 4. Update correction status
-    const { data: updatedCorrection, error: updateCorrError } = await admin
+    const updateResult = await admin
       .from('attendance_corrections')
       .update({
         status: action === 'approve' ? 'approved' : 'rejected',
@@ -58,7 +65,8 @@ export async function PATCH(
       .select()
       .single()
 
-    if (updateCorrError) throw updateCorrError
+    if (updateResult.error) throw updateResult.error
+    const updatedCorrection = updateResult.data
 
     // 5. JIKA action === 'approve'
     if (action === 'approve') {
@@ -71,7 +79,7 @@ export async function PATCH(
                        new Date(updatedCorrection.after_check_in).getTime()
         work_hours = parseFloat((diffMs / 3600000).toFixed(2))
         
-        const threshold = correction.tenants?.overtime_threshold_hours ?? 8
+        const threshold = tenantConfig?.overtime_threshold_hours ?? 8
         overtime_hours = parseFloat(Math.max(0, work_hours - threshold).toFixed(2))
       }
 

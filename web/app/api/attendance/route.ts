@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { createAdminClient } from '@/lib/supabase/server'
 import { requireAuth, isHrOrAdmin } from '@/lib/utils/auth'
 import { okWithPagination, badRequest, buildPaginationMeta, serverError } from '@/lib/utils/response'
 import { AttendanceQuerySchema } from '@/lib/validations/attendance'
@@ -7,7 +8,9 @@ export async function GET(request: NextRequest) {
   try {
     const auth = await requireAuth(request)
     if (!auth.ok) return auth.response
-    const { user, supabase } = auth
+    const { user } = auth
+
+    const admin = createAdminClient()
 
     // 1. Parse & validasi query params
     const url = new URL(request.url)
@@ -22,7 +25,7 @@ export async function GET(request: NextRequest) {
     const offset = (page - 1) * limit
 
     // 2. Build Query
-    let query = supabase
+    let query = admin
       .from('attendances')
       .select(`
         id, attendance_date, check_in, check_out, work_hours, late_minutes,
@@ -59,14 +62,33 @@ export async function GET(request: NextRequest) {
         .lte('attendance_date', `${month}-${lastDay}`)
     }
 
-    // Filter Status (Join attendance_status by code)
+    // Filter Status — resolve code to id first
     if (status) {
-      query = query.eq('status.code', status)
+      const { data: statusRow } = await admin
+        .from('attendance_status')
+        .select('id')
+        .eq('code', status)
+        .single()
+      if (statusRow) {
+        query = query.eq('status_id', statusRow.id)
+      }
     }
 
-    // Filter Department (Join employees filter by department_id)
+    // Filter Department — resolve to employee_ids first
     if (department_id) {
-      query = query.eq('employee.department_id', department_id)
+      const { data: empInDept } = await admin
+        .from('employees')
+        .select('id')
+        .eq('department_id', department_id)
+        .eq('tenant_id', user.tenant_id)
+        .is('deleted_at', null)
+      const empIds = (empInDept ?? []).map((e: any) => e.id)
+      if (empIds.length > 0) {
+        query = query.in('employee_id', empIds)
+      } else {
+        // No employees in this department, return empty
+        return okWithPagination([], buildPaginationMeta(0, page, limit))
+      }
     }
 
     // 4. Pagination & Sort

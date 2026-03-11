@@ -1,51 +1,17 @@
-// ============================================================
-// app/api/auth/logout/route.ts
-// POST /api/auth/logout
-// ============================================================
 import { NextRequest } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
-import { ok, serverError } from '@/lib/utils/response'
-import { requireAuth } from '@/lib/utils/auth'
-
-export async function POST(request: NextRequest) {
-  try {
-    // Optional: cek auth dulu (kalau token sudah expired, tetap lanjut logout)
-    const supabase = createClient()
-    const { error } = await supabase.auth.signOut()
-
-    if (error) {
-      // Tetap return ok — user tetap logout dari sisi client
-      console.error('[Logout Error]', error)
-    }
-
-    return ok(null, 'Logout berhasil.')
-  } catch (error) {
-    return serverError(error)
-  }
-}
-
-
-// ============================================================
-// app/api/auth/me/route.ts
-// GET /api/auth/me
-// Return: user profile + tenant info + permissions
-// ============================================================
-// (Simpan file ini di app/api/auth/me/route.ts)
-
-import { NextRequest as NextRequestMe } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import {
-  ok as okMe,
-  unauthorized as unauthorizedMe,
-  serverError as serverErrorMe,
-} from '@/lib/utils/response'
-import { requireAuth as requireAuthMe } from '@/lib/utils/auth'
+import { ok, unauthorized, serverError } from '@/lib/utils/response'
+import { requireAuth } from '@/lib/utils/auth'
 import type { MeResponse } from '@/types/api'
 
-export async function GET(request: NextRequestMe) {
+/**
+ * GET /api/auth/me
+ * Return: user profile + tenant info + permissions
+ */
+export async function GET(request: NextRequest) {
   try {
     // ── 1. Auth check ──────────────────────────────────
-    const auth = await requireAuthMe(request)
+    const auth = await requireAuth(request)
     if (!auth.ok) return auth.response
 
     const { user } = auth
@@ -58,7 +24,7 @@ export async function GET(request: NextRequestMe) {
       .eq('id', user.tenant_id)
       .single()
 
-    if (tenantError || !tenant) return unauthorizedMe()
+    if (tenantError || !tenant) return unauthorized()
 
     // ── 3. Ambil permissions dari role ─────────────────
     let permissions: string[] = []
@@ -85,11 +51,11 @@ export async function GET(request: NextRequestMe) {
     }
 
     // Admin dan HR Manager mendapat semua permission
-    if (user.role_name === 'Admin') {
+    if (user.role_name === 'Admin' || user.role_name === 'HR Manager') {
       const { data: allPerms } = await admin
         .from('permissions')
         .select('code')
-      permissions = (allPerms ?? []).map(p => p.code)
+      permissions = (allPerms ?? []).map((p: any) => p.code)
     }
 
     // ── 4. Return response ─────────────────────────────
@@ -106,9 +72,9 @@ export async function GET(request: NextRequestMe) {
       permissions,
     }
 
-    return okMe<MeResponse>(response)
+    return ok<MeResponse>(response)
 
   } catch (error) {
-    return serverErrorMe(error)
+    return serverError(error)
   }
 }

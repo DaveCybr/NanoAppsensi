@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     // Hitung jumlah karyawan aktif per jabatan
     const positionsWithCount = await Promise.all(
-      (data ?? []).map(async (pos: Position) => {
+      (data ?? []).map(async (pos) => {
         const { count } = await admin
           .from('employees')
           .select('id', { count: 'exact', head: true })
@@ -76,13 +76,14 @@ export async function POST(request: NextRequest) {
 
     if (existing) return conflict('Nama jabatan sudah ada.')
 
-    const { data, error } = await admin
+    const result = await admin
       .from('positions')
       .insert({ ...parsed.data, tenant_id: user.tenant_id })
       .select('id, name, description, created_at')
       .single()
 
-    if (error) throw error
+    if (result.error) throw result.error
+    const data = result.data
 
     await writeAuditLog({
       user,
