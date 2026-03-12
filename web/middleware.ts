@@ -5,7 +5,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-// Route yang tidak butuh autentikasi
 const PUBLIC_ROUTES = [
   '/login',
   '/setup',
@@ -14,44 +13,37 @@ const PUBLIC_ROUTES = [
   '/api/health',
 ]
 
-// Route API — middleware tidak inject redirect, hanya refresh session
-// Auth di API Route Handler ditangani sendiri via requireAuth()
-const API_PREFIX = '/api/'
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // ── Skip public routes ─────────────────────────────────
-  const isPublic = PUBLIC_ROUTES.some(route => pathname.startsWith(route))
-  
+  // ── API Setup: Always allow ───────────────────────────
+  if (pathname.startsWith('/api/setup')) return NextResponse.next()
+
   // ── Setup Wizard Check ─────────────────────────────────
-  // Jangan cek setup jika sedang di halaman setup atau API setup
-  if (!pathname.startsWith('/setup') && !pathname.startsWith('/api/setup')) {
-    try {
-      // Cek apakah setup dibutuhkan. Menggunakan origin request untuk absolute URL.
-      const checkRes = await fetch(new URL('/api/setup/check', request.url))
-      const { data } = await checkRes.json()
-      
-      if (data?.needs_setup) {
-        return NextResponse.redirect(new URL('/setup', request.url))
-      }
-    } catch (err) {
-      console.error('Setup check failed:', err)
+  // Cek setup berlaku untuk halaman web (bukan static files yang sudah difilter matcher)
+  try {
+    const checkRes = await fetch(new URL('/api/setup/check', request.url))
+    const json = await checkRes.json()
+    const needsSetup = json.data?.needs_setup
+
+    // 1. Jika butuh setup tapi TIDAK di halaman setup -> redirect ke /setup
+    if (needsSetup && pathname !== '/setup' && !pathname.startsWith('/api/')) {
+      return NextResponse.redirect(new URL('/setup', request.url))
     }
+    
+    // 2. Jika SUDAH setup tapi akses halaman /setup -> redirect ke /login
+    if (!needsSetup && pathname === '/setup') {
+      return NextResponse.redirect(new URL('/login', request.url))
+    }
+  } catch (err) {
+    console.error('Setup check failed:', err)
   }
 
+  const isPublic = PUBLIC_ROUTES.some(route => pathname.startsWith(route))
   if (isPublic) return NextResponse.next()
 
-  // ── API routes: passthrough, auth ditangani di handler ─
-  // Tapi tetap refresh session jika ada cookie
-  if (pathname.startsWith(API_PREFIX)) {
-    // Jika ada Bearer token → passthrough langsung
-    const authHeader = request.headers.get('Authorization')
-    if (authHeader?.startsWith('Bearer ')) {
-      return NextResponse.next()
-    }
-    // Jika tidak ada token sama sekali → biarkan handler yang reject
-    // (supaya response format tetap JSON, bukan redirect)
+  // ── API routes: passthrough ────────────────────────────
+  if (pathname.startsWith('/api/')) {
     return NextResponse.next()
   }
 
@@ -83,19 +75,16 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Refresh session (penting untuk SSR)
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Redirect ke login jika belum auth
   if (!user) {
     const loginUrl = new URL('/login', request.url)
     loginUrl.searchParams.set('redirect', pathname)
     return NextResponse.redirect(loginUrl)
   }
 
-  // Redirect dari login ke dashboard jika sudah auth
   if (pathname === '/login') {
-    return NextResponse.redirect(new URL('/', request.url))
+    return NextResponse.redirect(new URL('/dashboard', request.url))
   }
 
   return response
@@ -103,13 +92,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match semua request kecuali:
-     * - _next/static (static files)
-     * - _next/image (image optimization)
-     * - favicon.ico
-     * - file dengan ekstensi (svg, png, jpg, dll)
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)',
   ],
 }

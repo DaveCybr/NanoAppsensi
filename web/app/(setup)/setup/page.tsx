@@ -91,6 +91,9 @@ export default function SetupPage() {
         setTimeout(() => {
           router.push('/login?setup=success')
         }, 800)
+      } else if (res.status === 409 || result.error?.includes('terkonfigurasi')) {
+        alert('Sistem sudah terkonfigurasi. Mengarahkan Anda ke halaman login.')
+        router.push('/login')
       } else {
         alert(result.error || 'Terjadi kesalahan saat setup.')
         setLoading(false)

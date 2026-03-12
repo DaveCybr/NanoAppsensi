@@ -1,7 +1,9 @@
+// ============================================================
+// app/api/setup/init/route.ts
+// ============================================================
 import { createAdminClient } from '@/lib/supabase/server'
 import { ok, badRequest, serverError, conflict } from '@/lib/utils/response'
 import { z } from 'zod'
-import fs from 'fs'
 
 const initSchema = z.object({
   company_name: z.string().min(2).max(255),
@@ -13,39 +15,23 @@ const initSchema = z.object({
 })
 
 export async function POST(request: Request) {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  console.log('SUPABASE_SERVICE_ROLE_KEY check:', {
-    exists: !!serviceRoleKey,
-    length: serviceRoleKey?.length,
-    prefix: serviceRoleKey?.substring(0, 10)
-  })
-  
   const supabase = createAdminClient()
 
-  // Diagnostic: Test if Service Role Key is working via Auth API
-  const { data: authTest, error: authErr } = await supabase.auth.admin.listUsers()
-  console.log('Diagnostic - ListUsers test:', { 
-    success: !!authTest, 
-    error: authErr 
-  })
-
-  // 1. Re-check tenants table is still empty
+  // 1. Cek tenants table masih kosong
   const { count: tenantCount, error: checkError } = await supabase
     .from('tenants')
     .select('*', { count: 'exact', head: true })
 
   if (checkError) {
-    console.error('Raw error:', JSON.stringify(checkError, null, 2))
-    console.error('Error prototype:', Object.getPrototypeOf(checkError))
-    console.error('All keys:', Object.getOwnPropertyNames(checkError))
-    return serverError(`Raw: ${JSON.stringify(checkError)} | Message: ${checkError.message} | Code: ${checkError.code}`)
+    console.error('Check tenants error:', checkError)
+    return serverError('Gagal mencek status database.')
   }
 
   if (tenantCount && tenantCount > 0) {
     return conflict('Sistem sudah terkonfigurasi.')
   }
 
-  // 2. Validate fields
+  // 2. Validasi input
   const body = await request.json()
   const validate = initSchema.safeParse(body)
   if (!validate.success) {
@@ -71,58 +57,73 @@ export async function POST(request: Request) {
         work_hours_per_day: 8,
         overtime_threshold_hours: 8,
         default_ptkp: 'TK0',
-        locale: 'id-ID'
-      } as any)
+        locale: 'id-ID',
+      })
       .select()
       .single()
 
     if (tenantError) throw tenantError
     tenantId = tenant.id
 
-    // 4. Create Supabase Auth user
+    // 4. Buat Admin role DULU sebelum auth user
+    // Trigger handle_new_user butuh role_id dari metadata
+    const { data: existingRole } = await supabase
+      .from('roles')
+      .select('*')
+      .eq('name', 'Admin')
+      .eq('tenant_id', tenantId)
+      .maybeSingle()
+
+    let adminRole = existingRole
+
+    if (!adminRole) {
+      const { data: newRole, error: createRoleError } = await supabase
+        .from('roles')
+        .insert({
+          name: 'Admin',
+          tenant_id: tenantId,
+          is_system: true,
+        })
+        .select()
+        .single()
+
+      if (createRoleError) throw createRoleError
+      adminRole = newRole
+    }
+
+    // Buat juga role HR Manager dan Employee sekalian
+    await supabase.from('roles').insert([
+      { name: 'HR Manager', tenant_id: tenantId, is_system: true },
+      { name: 'Employee', tenant_id: tenantId, is_system: true },
+    ])
+
+    // 5. Buat Supabase Auth user DENGAN metadata
+    // Trigger handle_new_user akan otomatis insert ke public.users
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email: data.admin_email,
       password: data.admin_password,
-      email_confirm: true
+      email_confirm: true,
+      user_metadata: {
+        tenant_id: tenantId,
+        role_id: adminRole.id,
+        full_name: data.admin_name,
+      },
     })
 
     if (authError) throw authError
     authUserId = authData.user.id
 
-    // 5. Get or create 'Admin' role
-    let { data: adminRole, error: roleError } = await supabase
-      .from('roles')
-      .select('*')
-      .eq('name', 'Admin')
-      .eq('tenant_id', tenantId)
-      .single()
-
-    if (roleError && roleError.code === 'PGRST116') { // Not found
-      const { data: newRole, error: createRoleError } = await supabase
-        .from('roles')
-        .insert({ name: 'Admin', tenant_id: tenantId } as any)
-        .select()
-        .single()
-      
-      if (createRoleError) throw createRoleError
-      adminRole = newRole
-    } else if (roleError) {
-      throw roleError
-    }
-
-    // 6. Insert public.users
-    const { error: userError } = await supabase
+    // 6. Update public.users yang sudah dibuat trigger
+    // Pastikan is_active = true dan full_name terisi
+    const { error: userUpdateError } = await supabase
       .from('users')
-      .insert({
-        id: authUserId,
-        tenant_id: tenantId,
-        role_id: adminRole.id,
-        email: data.admin_email,
+      .update({
+        is_active: true,
         full_name: data.admin_name,
-        is_active: true
-      } as any)
+      })
+      .eq('id', authUserId)
 
-    if (userError) throw userError
+    if (userUpdateError) throw userUpdateError
 
     // 7. Insert default leave types
     const { error: leaveError } = await supabase
@@ -132,24 +133,30 @@ export async function POST(request: Request) {
         { tenant_id: tenantId, name: 'Sakit', max_days: 365, is_paid: true, requires_document: false },
         { tenant_id: tenantId, name: 'Izin Khusus', max_days: 3, is_paid: true, requires_document: false },
         { tenant_id: tenantId, name: 'Cuti Melahirkan', max_days: 90, is_paid: true, requires_document: true },
-      ] as any)
+      ])
 
     if (leaveError) throw leaveError
 
     // 8. Insert default attendance statuses
-    const { error: statusError } = await supabase
-      .from('attendance_status' as any)
-      .insert([
-        { tenant_id: tenantId, code: 'PRESENT', name: 'Hadir', color: '#22c55e' },
-        { tenant_id: tenantId, code: 'LATE', name: 'Terlambat', color: '#f59e0b' },
-        { tenant_id: tenantId, code: 'ABSENT', name: 'Tidak Hadir', color: '#ef4444' },
-        { tenant_id: tenantId, code: 'LEAVE', name: 'Cuti', color: '#8b5cf6' },
-        { tenant_id: tenantId, code: 'WFH', name: 'Work From Home', color: '#3b82f6' },
-        { tenant_id: tenantId, code: 'HOLIDAY', name: 'Hari Libur', color: '#64748b' },
-      ] as any)
+    // Tabel ini GLOBAL — tidak ada kolom tenant_id
+    const { count: statusCount } = await supabase
+      .from('attendance_status')
+      .select('*', { count: 'exact', head: true })
 
-    // Note: Instructions say "if not exist" but for fresh setup we just insert.
-    // If it fails with conflict we can ignore if needed, but here we assume fresh.
+    if (!statusCount || statusCount === 0) {
+      const { error: statusError } = await supabase
+        .from('attendance_status')
+        .insert([
+          { code: 'PRESENT', name: 'Hadir', color: '#22c55e' },
+          { code: 'LATE', name: 'Terlambat', color: '#f59e0b' },
+          { code: 'ABSENT', name: 'Tidak Hadir', color: '#ef4444' },
+          { code: 'LEAVE', name: 'Cuti', color: '#8b5cf6' },
+          { code: 'WFH', name: 'Work From Home', color: '#3b82f6' },
+          { code: 'HOLIDAY', name: 'Hari Libur', color: '#64748b' },
+        ])
+
+      if (statusError) throw statusError
+    }
 
     // 9. Insert default shift
     const { error: shiftError } = await supabase
@@ -161,21 +168,21 @@ export async function POST(request: Request) {
         end_time: '17:00:00',
         is_overnight: false,
         late_tolerance_minutes: 15,
-        break_duration_minutes: 60
-      } as any)
+        break_duration_minutes: 60,
+      })
 
     if (shiftError) throw shiftError
 
     // 10. Insert default work location
     const { error: locationError } = await supabase
-      .from('work_locations' as any)
+      .from('work_locations')
       .insert({
         tenant_id: tenantId,
         name: 'Kantor Pusat',
         address: '-',
         latitude: -6.2088,
         longitude: 106.8456,
-        radius_meters: 100
+        radius_meters: 100,
       } as any)
 
     if (locationError) throw locationError
@@ -183,13 +190,25 @@ export async function POST(request: Request) {
     return ok({ success: true, message: 'Setup berhasil. Silakan login.' })
 
   } catch (err: any) {
-    // Rollback
-    if (tenantId) {
-      await supabase.from('tenants').delete().eq('id', tenantId)
+    console.error('Setup error:', err)
+
+    // Rollback dalam urutan yang aman (child tables dulu)
+    try {
+      if (authUserId) {
+        await supabase.auth.admin.deleteUser(authUserId)
+      }
+      if (tenantId) {
+        await supabase.from('work_locations' as any).delete().eq('tenant_id', tenantId)
+        await supabase.from('shifts').delete().eq('tenant_id', tenantId)
+        await supabase.from('leave_types').delete().eq('tenant_id', tenantId)
+        await supabase.from('users').delete().eq('tenant_id', tenantId)
+        await supabase.from('roles').delete().eq('tenant_id', tenantId)
+        await supabase.from('tenants').delete().eq('id', tenantId)
+      }
+    } catch (rollbackErr) {
+      console.error('Rollback error:', rollbackErr)
     }
-    if (authUserId) {
-      await supabase.auth.admin.deleteUser(authUserId)
-    }
+
     return serverError('Gagal dalam proses setup: ' + (err.message || 'Unknown error'))
   }
 }
