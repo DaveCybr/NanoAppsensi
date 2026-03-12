@@ -21,12 +21,14 @@ export default function CutiPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear())
   
   const debouncedSearch = useDebounce(search, 500)
 
   // Query params
   const queryParams = new URLSearchParams()
   if (statusFilter) queryParams.set('status', statusFilter)
+  queryParams.set('year', String(selectedYear))
   queryParams.set('limit', '50')
 
   const { data: leaveData, loading, refetch } = useApi<any>(`/api/leave/requests?${queryParams.toString()}`)
@@ -40,8 +42,8 @@ export default function CutiPage() {
 
   const stats = {
     pending: rawLeaves.filter((l: any) => l.status === 'pending').length,
-    approvedOfMonth: rawLeaves.filter((l: any) => l.status === 'approved').length, // Simplified
-    rate: "3.2%" 
+    approvedOfMonth: rawLeaves.filter((l: any) => l.status === 'approved').length,
+    rejected: rawLeaves.filter((l: any) => l.status === 'rejected').length,
   }
 
   const handleReview = async (id: string, action: 'approve' | 'reject') => {
@@ -109,8 +111,8 @@ export default function CutiPage() {
             <BarChart2 className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Tingkat Absensi Cuti</p>
-            <p className="text-2xl font-extrabold">{stats.rate} <span className="text-xs text-green-600 font-bold ml-1">↓ 0.5%</span></p>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Ditolak</p>
+            <p className="text-2xl font-extrabold">{formatNumber(stats.rejected)} Pengajuan</p>
           </div>
         </div>
       </div>
@@ -141,9 +143,14 @@ export default function CutiPage() {
           </select>
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <select className="pl-10 pr-8 py-2 bg-muted/30 border-transparent rounded-lg text-sm outline-none focus:bg-white appearance-none cursor-pointer font-medium">
-              <option>Maret 2024</option>
-              <option>Filter Tahun</option>
+            <select 
+              className="pl-10 pr-8 py-2 bg-muted/30 border-transparent rounded-lg text-sm outline-none focus:bg-white appearance-none cursor-pointer font-medium"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+            >
+              {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                <option key={y} value={y}>{y}</option>
+              ))}
             </select>
           </div>
         </div>

@@ -1,7 +1,7 @@
 "use client"
 
 import React from 'react'
-import { X, MapPin, Camera, Smartphone, Calendar, Clock, AlertCircle } from 'lucide-react'
+import { X, MapPin, Camera, Calendar, Clock, AlertCircle } from 'lucide-react'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { AvatarInitials } from '@/components/ui/AvatarInitials'
 import { cn } from '@/lib/utils/cn'
@@ -60,7 +60,9 @@ export function AttendanceDetail({ isOpen, onClose, record }: AttendanceDetailPr
               <p className="text-2xl font-bold text-foreground">
                 {record.check_in ? formatTime(record.check_in) : '--:--'}
               </p>
-              <p className="text-[10px] text-muted-foreground">Jadwal: 08:00 WIB</p>
+              <p className="text-[10px] text-muted-foreground">
+                {record.employee?.shift ? `Jadwal: ${record.employee.shift.start_time?.slice(0,5)} WIB` : ''}
+              </p>
             </div>
             <div className="p-4 border rounded-xl space-y-2">
               <div className="flex items-center gap-2 text-muted-foreground">
@@ -70,7 +72,9 @@ export function AttendanceDetail({ isOpen, onClose, record }: AttendanceDetailPr
               <p className="text-2xl font-bold text-foreground">
                 {record.check_out ? formatTime(record.check_out) : '--:--'}
               </p>
-              <p className="text-[10px] text-muted-foreground">Jadwal: 17:00 WIB</p>
+              <p className="text-[10px] text-muted-foreground">
+                {record.employee?.shift ? `Jadwal: ${record.employee.shift.end_time?.slice(0,5)} WIB` : ''}
+              </p>
             </div>
           </div>
 
@@ -81,16 +85,30 @@ export function AttendanceDetail({ isOpen, onClose, record }: AttendanceDetailPr
             </h3>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2 text-center">
-                <div className="aspect-[3/4] bg-muted rounded-xl overflow-hidden border-2 border-primary/20">
-                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${record.employee?.full_name}_in`} className="w-full h-full object-cover" alt="Check-in photo" />
+                <div className="aspect-[3/4] bg-muted rounded-xl overflow-hidden border-2 border-primary/20 flex items-center justify-center">
+                  {record.check_in_photo_url ? (
+                    <img src={record.check_in_photo_url} className="w-full h-full object-cover" alt="Check-in photo" />
+                  ) : (
+                    <Camera className="w-8 h-8 text-muted-foreground/30" />
+                  )}
                 </div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Foto Masuk</p>
+                {record.check_in_face_confidence != null && (
+                  <p className="text-[10px] text-muted-foreground">Confidence: {Math.round(record.check_in_face_confidence)}%</p>
+                )}
               </div>
               <div className="space-y-2 text-center">
-                <div className="aspect-[3/4] bg-muted rounded-xl overflow-hidden border-2 border-primary/20">
-                  <img src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${record.employee?.full_name}_out`} className="w-full h-full object-cover" alt="Check-out photo" />
+                <div className="aspect-[3/4] bg-muted rounded-xl overflow-hidden border-2 border-primary/20 flex items-center justify-center">
+                  {record.check_out_photo_url ? (
+                    <img src={record.check_out_photo_url} className="w-full h-full object-cover" alt="Check-out photo" />
+                  ) : (
+                    <Camera className="w-8 h-8 text-muted-foreground/30" />
+                  )}
                 </div>
                 <p className="text-[10px] font-bold text-muted-foreground uppercase">Foto Keluar</p>
+                {record.check_out_face_confidence != null && (
+                  <p className="text-[10px] text-muted-foreground">Confidence: {Math.round(record.check_out_face_confidence)}%</p>
+                )}
               </div>
             </div>
           </div>
@@ -102,8 +120,14 @@ export function AttendanceDetail({ isOpen, onClose, record }: AttendanceDetailPr
             </h3>
             <div className="aspect-video bg-muted rounded-xl border flex flex-col items-center justify-center text-muted-foreground border-dashed">
               <MapPin className="w-8 h-8 mb-2 opacity-20" />
-              <p className="text-xs font-medium italic">Google Maps Placeholder</p>
-              <p className="text-[10px] mt-1">-6.2088, 106.8456 (Radius: 15m)</p>
+              {record.check_in_lat && record.check_in_lng ? (
+                <>
+                  <p className="text-xs font-medium">Lokasi Check-in</p>
+                  <p className="text-[10px] mt-1">{record.check_in_lat}, {record.check_in_lng}</p>
+                </>
+              ) : (
+                <p className="text-xs font-medium italic">Data lokasi tidak tersedia</p>
+              )}
             </div>
             <div className={cn(
               "p-3 rounded-lg flex items-center gap-3 text-xs font-semibold",
@@ -114,14 +138,19 @@ export function AttendanceDetail({ isOpen, onClose, record }: AttendanceDetailPr
             </div>
           </div>
 
-          {/* Device Info */}
-          <div className="p-4 bg-muted/20 rounded-xl flex items-center gap-4">
-            <Smartphone className="w-5 h-5 text-muted-foreground" />
-            <div>
-              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Perangkat</p>
-              <p className="text-sm font-medium">iPhone 13 Pro (iOS 17.2) • App v2.4.1</p>
+          {/* Work Hours Info */}
+          {record.work_hours != null && (
+            <div className="p-4 bg-muted/20 rounded-xl flex items-center gap-4">
+              <Clock className="w-5 h-5 text-muted-foreground" />
+              <div>
+                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Total Jam Kerja</p>
+                <p className="text-sm font-medium">
+                  {record.work_hours} jam
+                  {record.overtime_hours > 0 && ` (Lembur: ${record.overtime_hours} jam)`}
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Footer */}

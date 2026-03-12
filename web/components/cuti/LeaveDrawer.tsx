@@ -15,13 +15,19 @@ interface LeaveDrawerProps {
 export function LeaveDrawer({ isOpen, onClose, onSuccess }: LeaveDrawerProps) {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const initialFormData = {
     leave_type_id: '',
     start_date: '',
     end_date: '',
     reason: '',
     attachment_url: ''
-  })
+  }
+  const [formData, setFormData] = useState(initialFormData)
+
+  const resetForm = () => setFormData(initialFormData)
 
   // Fetch leave types
   const { data: leaveTypes } = useApi<any[]>('/api/leave/types')
@@ -46,6 +52,7 @@ export function LeaveDrawer({ isOpen, onClose, onSuccess }: LeaveDrawerProps) {
       })
       const json = await res.json()
       if (json.success) {
+        resetForm()
         onSuccess()
         onClose()
       } else {
@@ -58,11 +65,37 @@ export function LeaveDrawer({ isOpen, onClose, onSuccess }: LeaveDrawerProps) {
     }
   }
 
+  const handleClose = () => {
+    resetForm()
+    onClose()
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await fetch('/api/leave/upload-attachment', { method: 'POST', body: fd })
+      const json = await res.json()
+      if (json.success && json.data?.url) {
+        setFormData(prev => ({ ...prev, attachment_url: json.data.url }))
+      } else {
+        alert(json.error || 'Gagal upload file')
+      }
+    } catch {
+      alert('Gagal upload file')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end text-left">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={handleClose} />
       
       <div className="relative w-full max-w-lg bg-white h-screen shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
         {/* Header */}
@@ -71,7 +104,7 @@ export function LeaveDrawer({ isOpen, onClose, onSuccess }: LeaveDrawerProps) {
             <h2 className="text-xl font-bold">Ajukan Permohonan Cuti</h2>
             <p className="text-sm text-muted-foreground mt-1">Isi formulir pengajuan cuti Anda</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors">
+          <button onClick={handleClose} className="p-2 hover:bg-muted rounded-lg transition-colors">
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -162,9 +195,25 @@ export function LeaveDrawer({ isOpen, onClose, onSuccess }: LeaveDrawerProps) {
           {selectedType?.requires_document && (
             <div className="space-y-1.5 text-left">
               <label className="text-sm font-semibold">Lampiran (Wajib)</label>
-              <div className="border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center bg-muted/20 text-muted-foreground group hover:bg-muted/30 transition-all cursor-pointer">
-                <FileText className="w-8 h-8 mb-2 opacity-20" />
-                <p className="text-xs font-semibold">Upload file pendukung (PDF/JPG)</p>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed rounded-xl p-4 flex flex-col items-center justify-center bg-muted/20 text-muted-foreground group hover:bg-muted/30 transition-all cursor-pointer"
+              >
+                {uploading ? (
+                  <Loader2 className="w-8 h-8 mb-2 animate-spin text-primary" />
+                ) : (
+                  <FileText className="w-8 h-8 mb-2 opacity-20" />
+                )}
+                <p className="text-xs font-semibold">
+                  {formData.attachment_url ? '✅ File berhasil diupload. Klik untuk ganti.' : 'Upload file pendukung (PDF/JPG)'}
+                </p>
               </div>
             </div>
           )}
@@ -175,21 +224,19 @@ export function LeaveDrawer({ isOpen, onClose, onSuccess }: LeaveDrawerProps) {
               Pastikan periode cuti tidak tumpang tindih dengan pengajuan lain.
             </p>
           </div>
+          {/* Footer inside form so type="submit" works */}
+          <div className="p-6 border-t bg-muted/10 flex items-center justify-end gap-3 sticky bottom-0 bg-white">
+            <button type="button" onClick={handleClose} className="btn-outline px-6">Batal</button>
+            <button 
+              type="submit"
+              disabled={loading}
+              className="btn-primary px-8 font-bold flex items-center gap-2"
+            >
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {loading ? 'Mengirim...' : 'Kirim Pengajuan'}
+            </button>
+          </div>
         </form>
-
-        {/* Footer */}
-        <div className="p-6 border-t bg-muted/10 flex items-center justify-end gap-3">
-          <button onClick={onClose} className="btn-outline px-6">Batal</button>
-          <button 
-            type="submit"
-            onClick={handleSubmit}
-            disabled={loading}
-            className="btn-primary px-8 font-bold flex items-center gap-2"
-          >
-            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {loading ? 'Mengirim...' : 'Kirim Pengajuan'}
-          </button>
-        </div>
       </div>
     </div>
   )

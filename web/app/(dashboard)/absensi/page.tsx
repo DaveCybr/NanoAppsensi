@@ -29,9 +29,14 @@ export default function AbsensiPage() {
   
   // Fetch Attendance Logs
   const { data: attendanceData, loading: logsLoading } = useApi<any>(
-    `/api/attendance?month=${selectedMonth}&employee_name=${debouncedSearch}`
+    `/api/attendance?month=${selectedMonth}`
   )
-  const attendances = attendanceData?.data || []
+  const rawAttendances = attendanceData?.data || []
+
+  // Filter search locally since API doesn't support employee_name param
+  const attendances = rawAttendances.filter((a: any) =>
+    a.employee?.full_name?.toLowerCase().includes(debouncedSearch.toLowerCase())
+  )
 
   const handleViewDetail = (record: any) => {
     setSelectedRecord(record)
