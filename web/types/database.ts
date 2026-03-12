@@ -203,6 +203,7 @@ export type Database = {
           is_paid: boolean
           requires_document: boolean
           created_at: string
+          deleted_at: string | null
         }
         Insert: Omit<Database['public']['Tables']['leave_types']['Row'], 'id' | 'created_at'>
         Update: Partial<Database['public']['Tables']['leave_types']['Insert']>

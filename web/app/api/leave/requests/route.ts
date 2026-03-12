@@ -87,7 +87,9 @@ export async function POST(request: NextRequest) {
       .single()
     
     const timezone = tenant?.timezone ?? 'Asia/Jakarta'
-    const today = toZonedTime(new Date(), timezone).toISOString().split('T')[0]
+    const { toZonedTime, format } = await import('date-fns-tz')
+    const zonedNow = toZonedTime(new Date(), timezone)
+    const today = format(zonedNow, 'yyyy-MM-dd', { timeZone: timezone })
 
     if (start_date < today) return badRequest('Tidak bisa mengajukan cuti untuk tanggal yang sudah lewat.')
 
@@ -138,8 +140,8 @@ export async function POST(request: NextRequest) {
       .select('id')
       .eq('employee_id', user.employee_id)
       .in('status', ['pending', 'approved'])
-      .not('id', 'is', null) // dummy to allow further filter
-      .or(`and(start_date.lte.${end_date},end_date.gte.${start_date})`)
+      .lte('start_date', end_date)
+      .gte('end_date', start_date)
       .limit(1)
       .maybeSingle()
 
