@@ -1,6 +1,6 @@
 import React from 'react'
 import { cn } from '@/lib/utils/cn'
-import { ChevronRight, Home } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import Link from 'next/link'
 
 interface Breadcrumb {
@@ -10,43 +10,44 @@ interface Breadcrumb {
 
 interface PageHeaderProps {
   title: string
+  description?: string
   breadcrumbs?: Breadcrumb[]
   children?: React.ReactNode
   className?: string
 }
 
-export function PageHeader({ title, breadcrumbs, children, className }: PageHeaderProps) {
+export function PageHeader({ title, description, breadcrumbs, children, className }: PageHeaderProps) {
   return (
-    <div className={cn("flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8", className)}>
-      <div className="space-y-1">
+    <div className={cn('flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6', className)}>
+      <div>
         {breadcrumbs && (
-          <nav className="flex items-center text-xs text-muted-foreground mb-2">
-            <Link href="/dashboard" className="hover:text-primary flex items-center">
-              <Home className="w-3 h-3 mr-1" />
-              Portal
-            </Link>
+          <nav className="flex items-center gap-1 text-[11.5px] text-muted-foreground mb-1.5">
+            <Link href="/dashboard" className="hover:text-foreground transition-colors">Portal</Link>
             {breadcrumbs.map((bc, i) => (
               <React.Fragment key={i}>
-                <ChevronRight className="w-3 h-3 mx-1" />
+                <ChevronRight className="w-3 h-3 text-muted-foreground/40" />
                 {bc.href ? (
-                  <Link href={bc.href} className="hover:text-primary">
-                    {bc.label}
-                  </Link>
+                  <Link href={bc.href} className="hover:text-foreground transition-colors">{bc.label}</Link>
                 ) : (
-                  <span className="font-medium text-foreground">{bc.label}</span>
+                  <span className="text-foreground font-medium">{bc.label}</span>
                 )}
               </React.Fragment>
             ))}
           </nav>
         )}
-        <h1 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+        <h1 className="text-[22px] font-semibold tracking-tight text-foreground leading-none">
           {title}
         </h1>
+        {description && (
+          <p className="text-[13px] text-muted-foreground mt-1.5">{description}</p>
+        )}
       </div>
-      
-      <div className="flex items-center gap-2">
-        {children}
-      </div>
+
+      {children && (
+        <div className="flex items-center gap-2 shrink-0">
+          {children}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { PaginationMeta } from '@/types/api'
 
 interface UseApiOptions {
   method?: string
@@ -8,6 +9,7 @@ interface UseApiOptions {
 
 interface UseApiResult<T> {
   data: T | null
+  meta: PaginationMeta | null
   loading: boolean
   error: string | null
   refetch: () => void
@@ -18,11 +20,11 @@ export function useApi<T>(
   options?: UseApiOptions
 ): UseApiResult<T> {
   const [data, setData]       = useState<T | null>(null)
+  const [meta, setMeta]       = useState<PaginationMeta | null>(null)
   const [loading, setLoading] = useState(!!url)
   const [error, setError]     = useState<string | null>(null)
 
   // ✅ FIX: Simpan options ke ref agar tidak jadi dependency useCallback
-  // Object baru setiap render akan menyebabkan infinite re-fetch
   const optionsRef = useRef(options)
   useEffect(() => {
     optionsRef.current = options
@@ -55,17 +57,19 @@ export function useApi<T>(
       }
 
       setData(json.data)
+      setMeta(json.meta || null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Terjadi kesalahan sistem')
       setData(null)
+      setMeta(null)
     } finally {
       setLoading(false)
     }
-  }, [url]) // ✅ hanya url sebagai dependency
+  }, [url])
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
 
-  return { data, loading, error, refetch: fetchData }
+  return { data, meta, loading, error, refetch: fetchData }
 }

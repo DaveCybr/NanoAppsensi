@@ -1,288 +1,327 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
-import { X, User, Briefcase, Lock, CheckCircle2, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
+import { X, User, Briefcase, ShieldCheck, ChevronRight, ChevronLeft, Loader2, Check } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useApi } from '@/hooks/useApi'
 
 interface EmployeeDrawerProps {
-  isOpen: boolean
-  onClose: () => void
+  isOpen:    boolean
+  onClose:   () => void
   onSuccess: () => void
-  employee?: any // If present, mode is edit
+  employee?: any
 }
 
+const STEPS = [
+  { id: 1, label: 'Data Pribadi',  icon: User },
+  { id: 2, label: 'Pekerjaan',    icon: Briefcase },
+  { id: 3, label: 'Akun & Status', icon: ShieldCheck },
+]
+
 export function EmployeeDrawer({ isOpen, onClose, onSuccess, employee }: EmployeeDrawerProps) {
-  const [step, setStep] = useState(1)
+  const [step, setStep]       = useState(1)
   const [loading, setLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    full_name: '',
-    email: '',
-    phone: '',
-    employee_code: '',
-    department_id: '',
-    position_id: '',
-    hire_date: '',
+  const [form, setForm]       = useState({
+    full_name:         '',
+    email:             '',
+    phone:             '',
+    employee_code:     '',
+    department_id:     '',
+    position_id:       '',
+    hire_date:         new Date().toISOString().split('T')[0],
     employment_status: 'active',
   })
 
-  // Fetch departments and positions for the form
-  const { data: depts } = useApi<any[]>('/api/departments')
+  const { data: depts }     = useApi<any[]>('/api/departments')
   const { data: positions } = useApi<any[]>('/api/positions')
 
   useEffect(() => {
+    if (!isOpen) { setStep(1); return }
     if (employee) {
-      setFormData({
-        full_name: employee.full_name || '',
-        email: employee.email || '',
-        phone: employee.phone || '',
-        employee_code: employee.employee_code || '',
-        department_id: employee.department?.id || employee.department_id || '',
-        position_id: employee.position?.id || employee.position_id || '',
-        hire_date: employee.join_date ? new Date(employee.join_date).toISOString().split('T')[0] : '', // Note: using join_date from prop but hire_date in API
+      setForm({
+        full_name:         employee.full_name         || '',
+        email:             employee.email             || '',
+        phone:             employee.phone             || '',
+        employee_code:     employee.employee_code     || '',
+        department_id:     employee.department?.id    || employee.department_id || '',
+        position_id:       employee.position?.id      || employee.position_id   || '',
+        hire_date:         employee.join_date
+          ? new Date(employee.join_date).toISOString().split('T')[0]
+          : new Date().toISOString().split('T')[0],
         employment_status: employee.status || 'active',
       })
     } else {
-      setFormData({
-        full_name: '',
-        email: '',
-        phone: '',
-        employee_code: '',
-        department_id: '',
-        position_id: '',
-        hire_date: new Date().toISOString().split('T')[0],
-        employment_status: 'active',
-      })
+      setForm({ full_name: '', email: '', phone: '', employee_code: '', department_id: '', position_id: '', hire_date: new Date().toISOString().split('T')[0], employment_status: 'active' })
     }
   }, [employee, isOpen])
 
   if (!isOpen) return null
 
-  const steps = [
-    { title: 'Data Pribadi', icon: User },
-    { title: 'Pekerjaan', icon: Briefcase },
-    { title: 'Akun', icon: Lock },
-  ]
+  const set = (key: string, val: string) => setForm(f => ({ ...f, [key]: val }))
 
-  const nextStep = () => setStep(s => Math.min(s + 1, 3))
-  const prevStep = () => setStep(s => Math.max(s - 1, 1))
+  const canNext1 = form.full_name.trim() && form.email.trim()
+  const canNext2 = true
 
   const handleSubmit = async () => {
     setLoading(true)
     try {
-      const url = employee ? `/api/employees/${employee.id}` : '/api/employees'
+      const url    = employee ? `/api/employees/${employee.id}` : '/api/employees'
       const method = employee ? 'PATCH' : 'POST'
-      
-      const res = await fetch(url, {
+      const res    = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(form),
       })
-      
-      const result = await res.json()
-      
-      if (result.success) {
-        onSuccess()
-        onClose()
-      } else {
-        alert(result.error || 'Gagal menyimpan data')
-      }
-    } catch (err) {
-      alert('Terjadi kesalahan sistem')
-    } finally {
-      setLoading(false)
-    }
+      const json = await res.json()
+      if (json.success) { onSuccess(); onClose() }
+      else alert(json.error || 'Gagal menyimpan data')
+    } catch { alert('Terjadi kesalahan sistem') }
+    finally { setLoading(false) }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm animate-in fade-in duration-300" onClick={onClose} />
-      
-      <div className="relative w-full max-w-lg bg-white h-screen shadow-2xl animate-in slide-in-from-right duration-300 flex flex-col">
+      {/* Backdrop */}
+      <div
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px] animate-in fade-in duration-200"
+        onClick={onClose}
+      />
+
+      {/* Panel */}
+      <div className="relative w-full max-w-[460px] bg-white h-screen shadow-2xl flex flex-col animate-in slide-in-from-right duration-250">
+
         {/* Header */}
-        <div className="p-6 border-b flex items-center justify-between">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/80">
           <div>
-            <h2 className="text-xl font-bold">{employee ? 'Edit' : 'Tambah'} Karyawan</h2>
-            <p className="text-sm text-muted-foreground mt-1">Lengkapi informasi detail karyawan</p>
+            <h2 className="text-[15px] font-semibold text-foreground">
+              {employee ? 'Edit Karyawan' : 'Tambah Karyawan'}
+            </h2>
+            <p className="text-[12px] text-muted-foreground mt-0.5">
+              {employee ? `Mengubah data ${employee.full_name}` : 'Isi data karyawan baru'}
+            </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-muted rounded-lg transition-colors">
-            <X className="w-5 h-5" />
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Step Indicator */}
-        <div className="px-6 py-4 bg-muted/30 border-b flex items-center justify-between">
-          {steps.map((s, i) => {
-            const num = i + 1
-            const isCompleted = step > num
-            const isActive = step === num
+        {/* Step indicator */}
+        <div className="flex items-center gap-0 px-5 py-3 border-b border-border/60 bg-muted/20">
+          {STEPS.map((s, i) => {
+            const done   = step > s.id
+            const active = step === s.id
             return (
-              <React.Fragment key={num}>
-                <div className="flex items-center gap-2">
+              <React.Fragment key={s.id}>
+                <div className="flex items-center gap-1.5">
                   <div className={cn(
-                    "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all",
-                    isActive ? "bg-primary text-white ring-4 ring-primary/10" : 
-                    isCompleted ? "bg-green-500 text-white" : "bg-white text-muted-foreground border"
+                    'w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-semibold transition-all',
+                    done   ? 'bg-emerald-500 text-white'
+                    : active ? 'bg-primary text-white ring-3 ring-primary/20'
+                             : 'bg-muted border border-border text-muted-foreground',
                   )}>
-                    {isCompleted ? <CheckCircle2 className="w-4 h-4" /> : num}
+                    {done ? <Check className="w-3 h-3" /> : s.id}
                   </div>
-                  <span className={cn("text-xs font-semibold", isActive ? "text-primary" : "text-muted-foreground")}>
-                    {s.title}
+                  <span className={cn(
+                    'text-[12px] font-medium transition-colors',
+                    active ? 'text-foreground' : 'text-muted-foreground',
+                  )}>
+                    {s.label}
                   </span>
                 </div>
-                {i < 2 && <div className="h-px bg-border flex-1 mx-2" />}
+                {i < STEPS.length - 1 && (
+                  <div className={cn('flex-1 h-px mx-3 transition-colors', done ? 'bg-emerald-300' : 'bg-border')} />
+                )}
               </React.Fragment>
             )
           })}
         </div>
 
-        {/* Form Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        {/* Form body */}
+        <div className="flex-1 overflow-y-auto px-5 py-5">
+
+          {/* ── Step 1: Personal ── */}
           {step === 1 && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="space-y-1.5 text-left">
-                <label className="text-sm font-semibold">Nama Lengkap</label>
-                <input 
-                  type="text" 
-                  value={formData.full_name}
-                  onChange={(e) => setFormData({...formData, full_name: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-4 focus:ring-primary/10 outline-none transition-all"
-                  placeholder="Contoh: Andi Saputra"
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-3 duration-200">
+              <Field label="Nama Lengkap" required>
+                <input
+                  type="text"
+                  value={form.full_name}
+                  onChange={e => set('full_name', e.target.value)}
+                  placeholder="Andi Saputra"
+                  className="input-field"
                 />
-              </div>
-              <div className="space-y-1.5 text-left">
-                <label className="text-sm font-semibold">Email Karyawan</label>
-                <input 
-                  type="email" 
-                  value={formData.email}
-                  disabled={!!employee}
-                  onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-4 focus:ring-primary/10 outline-none transition-all disabled:bg-muted/50"
+              </Field>
+
+              <Field label="Email Karyawan" required hint={employee ? 'Email tidak bisa diubah' : undefined}>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={e => set('email', e.target.value)}
                   placeholder="andi@perusahaan.com"
+                  disabled={!!employee}
+                  className="input-field disabled:bg-muted/40 disabled:text-muted-foreground disabled:cursor-not-allowed"
                 />
-              </div>
-              <div className="space-y-1.5 text-left">
-                <label className="text-sm font-semibold">Nomor Telepon</label>
-                <input 
-                  type="tel" 
-                  value={formData.phone}
-                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-4 focus:ring-primary/10 outline-none transition-all"
-                  placeholder="0812xxxx"
+              </Field>
+
+              <Field label="Nomor Telepon">
+                <input
+                  type="tel"
+                  value={form.phone}
+                  onChange={e => set('phone', e.target.value)}
+                  placeholder="0812-xxxx-xxxx"
+                  className="input-field"
                 />
-              </div>
+              </Field>
             </div>
           )}
 
+          {/* ── Step 2: Work ── */}
           {step === 2 && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="space-y-1.5 text-left">
-                <label className="text-sm font-semibold">Kode Karyawan</label>
-                <input 
-                  type="text" 
-                  value={formData.employee_code}
-                  onChange={(e) => setFormData({...formData, employee_code: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-4 focus:ring-primary/10 outline-none transition-all"
-                  placeholder="Kosongkan untuk auto-generate"
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-3 duration-200">
+              <Field label="Kode Karyawan" hint="Kosongkan untuk generate otomatis">
+                <input
+                  type="text"
+                  value={form.employee_code}
+                  onChange={e => set('employee_code', e.target.value)}
+                  placeholder="EMP-001"
+                  className="input-field"
+                  style={{ fontFamily: 'Geist Mono, monospace' }}
                 />
-              </div>
-              <div className="grid grid-cols-2 gap-4 text-left">
-                <div className="space-y-1.5 text-left">
-                  <label className="text-sm font-semibold">Departemen</label>
-                  <select 
-                    value={formData.department_id}
-                    onChange={(e) => setFormData({...formData, department_id: e.target.value})}
-                    className="w-full px-4 py-2 border rounded-lg bg-white outline-none"
+              </Field>
+
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Departemen">
+                  <select
+                    value={form.department_id}
+                    onChange={e => set('department_id', e.target.value)}
+                    className="input-field"
                   >
-                    <option value="">Pilih...</option>
-                    {depts?.map((d: any) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
+                    <option value="">Pilih departemen</option>
+                    {depts?.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
                   </select>
-                </div>
-                <div className="space-y-1.5 text-left text-left">
-                  <label className="text-sm font-semibold">Jabatan</label>
-                  <select 
-                    value={formData.position_id}
-                    onChange={(e) => setFormData({...formData, position_id: e.target.value})}
-                    className="w-full px-4 py-2 border rounded-lg bg-white outline-none"
+                </Field>
+
+                <Field label="Jabatan">
+                  <select
+                    value={form.position_id}
+                    onChange={e => set('position_id', e.target.value)}
+                    className="input-field"
                   >
-                    <option value="">Pilih...</option>
-                    {positions?.map((p: any) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
+                    <option value="">Pilih jabatan</option>
+                    {positions?.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
-                </div>
+                </Field>
               </div>
-              <div className="space-y-1.5 text-left">
-                <label className="text-sm font-semibold">Tanggal Bergabung</label>
-                <input 
-                  type="date" 
-                  value={formData.hire_date}
-                  onChange={(e) => setFormData({...formData, hire_date: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg outline-none" 
+
+              <Field label="Tanggal Bergabung">
+                <input
+                  type="date"
+                  value={form.hire_date}
+                  onChange={e => set('hire_date', e.target.value)}
+                  className="input-field"
                 />
-              </div>
+              </Field>
             </div>
           )}
 
+          {/* ── Step 3: Account ── */}
           {step === 3 && (
-            <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
-              <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 border-primary/10">
-                <p className="text-xs text-primary font-semibold mb-2">KEAMANAN AKUN</p>
-                <p className="text-xs text-muted-foreground leading-relaxed">
-                  {employee 
-                    ? 'Status akun karyawan saat ini.' 
-                    : 'Karyawan akan dikirimi email aktivasi untuk mengatur kata sandi mereka secara mandiri.'}
-                </p>
+            <div className="space-y-4 animate-in fade-in slide-in-from-right-3 duration-200">
+              <div className="p-3.5 rounded-md bg-blue-50 border border-blue-200/60 text-[12.5px] text-blue-700 leading-relaxed">
+                {employee
+                  ? 'Ubah status kepegawaian karyawan ini.'
+                  : 'Karyawan akan menerima email undangan untuk mengatur kata sandi secara mandiri.'}
               </div>
-              <div className="space-y-1.5 text-left">
-                <label className="text-sm font-semibold">Status Kepegawaian</label>
-                <select 
-                  value={formData.employment_status}
-                  onChange={(e) => setFormData({...formData, employment_status: e.target.value})}
-                  className="w-full px-4 py-2 border rounded-lg bg-white outline-none"
+
+              <Field label="Status Kepegawaian">
+                <select
+                  value={form.employment_status}
+                  onChange={e => set('employment_status', e.target.value)}
+                  className="input-field"
                 >
                   <option value="active">Aktif</option>
                   <option value="inactive">Nonaktif</option>
                   <option value="resign">Resign</option>
                 </select>
+              </Field>
+
+              {/* Summary */}
+              <div className="mt-4 rounded-md border border-border overflow-hidden">
+                <div className="px-3.5 py-2 bg-muted/30 border-b border-border">
+                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-[0.06em]">Ringkasan</p>
+                </div>
+                <div className="divide-y divide-border/50">
+                  {[
+                    { label: 'Nama',      value: form.full_name     || '—' },
+                    { label: 'Email',     value: form.email         || '—' },
+                    { label: 'Dept',      value: depts?.find((d: any) => d.id === form.department_id)?.name || '—' },
+                    { label: 'Jabatan',   value: positions?.find((p: any) => p.id === form.position_id)?.name || '—' },
+                  ].map(row => (
+                    <div key={row.label} className="flex items-center px-3.5 py-2">
+                      <span className="text-[11.5px] text-muted-foreground w-16 shrink-0">{row.label}</span>
+                      <span className="text-[12.5px] font-medium text-foreground truncate">{row.value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t bg-muted/10 flex items-center justify-between">
-          <button 
-            onClick={prevStep}
+        <div className="flex items-center justify-between px-5 py-4 border-t border-border/80 bg-muted/10">
+          <button
+            onClick={() => setStep(s => Math.max(1, s - 1))}
             disabled={step === 1}
-            className="btn-outline px-6 py-2.5 inline-flex items-center gap-2 group disabled:opacity-30"
+            className="btn-outline gap-1.5 disabled:opacity-30"
           >
-            <ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+            <ChevronLeft className="w-3.5 h-3.5" />
             Kembali
           </button>
-          
+
           {step < 3 ? (
-            <button 
-              onClick={nextStep}
-              className="btn-primary px-8 py-2.5 inline-flex items-center gap-2 group"
+            <button
+              onClick={() => setStep(s => s + 1)}
+              disabled={step === 1 ? !canNext1 : !canNext2}
+              className="btn-primary gap-1.5 disabled:opacity-40"
             >
-              Lanjutkan
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              Lanjut
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           ) : (
-            <button 
+            <button
               onClick={handleSubmit}
               disabled={loading}
-              className="btn-primary px-10 py-2.5 font-bold flex items-center gap-2 min-w-[180px] justify-center"
+              className="btn-primary min-w-[140px] justify-center"
             >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {loading ? 'Menyimpan...' : (employee ? 'Simpan Perubahan' : 'Daftarkan Karyawan')}
+              {loading
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" />Menyimpan...</>
+                : (employee ? 'Simpan Perubahan' : 'Daftarkan Karyawan')}
             </button>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/* Helper label wrapper */
+function Field({
+  label, required, hint, children,
+}: {
+  label: string; required?: boolean; hint?: string; children: React.ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="flex items-center gap-1 text-[12.5px] font-medium text-foreground">
+        {label}
+        {required && <span className="text-red-500">*</span>}
+      </label>
+      {children}
+      {hint && <p className="text-[11.5px] text-muted-foreground">{hint}</p>}
     </div>
   )
 }

@@ -1,214 +1,279 @@
 "use client"
 
-import React from 'react'
+import React, { useState } from 'react'
 import { useParams } from 'next/navigation'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { AvatarInitials } from '@/components/ui/AvatarInitials'
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton'
-import { 
-  Briefcase, 
-  Calendar, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  UserSquare2,
-  Clock,
-  Fingerprint,
-  Camera,
-  History,
-  Loader2
+import {
+  Briefcase, Calendar, Mail, Phone, MapPin,
+  Clock, Fingerprint, Camera, History, Loader2,
+  Building2, UserSquare2, Edit
 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 import { useApi } from '@/hooks/useApi'
 import { formatDate } from '@/lib/utils/format'
 
+const TABS = [
+  { id: 'profile',   label: 'Profil',         icon: UserSquare2 },
+  { id: 'attendance', label: 'Absensi',         icon: Clock },
+  { id: 'leave',     label: 'Cuti',            icon: Calendar },
+  { id: 'security',  label: 'Keamanan',        icon: Fingerprint },
+]
+
 export default function EmployeeDetailPage() {
-  const { id } = useParams()
-  const { data: employee, loading } = useApi<any>(id ? `/api/employees/${id}` : null)
+  const { id }   = useParams()
+  const [tab, setTab] = useState('profile')
 
-  const tabs = [
-    { id: 'profile', label: 'Profil Lengkap', icon: UserSquare2 },
-    { id: 'attendance', label: 'Absensi', icon: Clock },
-    { id: 'leave', label: 'Cuti', icon: Calendar },
-    { id: 'settings', label: 'Keamanan', icon: Fingerprint },
-  ]
-  const [activeTab, setActiveTab] = React.useState('profile')
+  const { data: employee, loading, error } = useApi<any>(id ? `/api/employees/${id}` : null)
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-8">
-        <LoadingSkeleton variant="stats" />
-      </div>
-    )
-  }
+  if (loading) return (
+    <div className="min-h-[60vh] flex items-center justify-center">
+      <LoadingSkeleton variant="stats" />
+    </div>
+  )
 
-  if (!employee) {
-    return (
-      <div className="text-center py-12 text-muted-foreground">
-        Karyawan tidak ditemukan.
-      </div>
-    )
-  }
+  if (error) return (
+    <div className="text-center py-20 px-4">
+      <div className="text-red-500 font-semibold mb-2">Terjadi Kesalahan</div>
+      <p className="text-muted-foreground text-[13px]">{error}</p>
+    </div>
+  )
 
-  const fullName = employee.full_name || 'Unknown'
-  const positionName = employee.position?.name || '-'
-  const deptName = employee.department?.name || '-'
-  const empCode = employee.employee_code || '-'
-  const shiftName = employee.shift ? `${employee.shift.name} (${employee.shift.start_time?.slice(0,5)} - ${employee.shift.end_time?.slice(0,5)})` : 'Belum diatur'
+  if (!employee) return (
+    <div className="text-center py-20 text-muted-foreground text-[13px]">
+      Karyawan tidak ditemukan.
+    </div>
+  )
+
+  const name      = employee.full_name || 'Unknown'
+  const position  = employee.position?.name   || '—'
+  const dept      = employee.department?.name || '—'
+  const code      = employee.employee_code    || '—'
+  const shiftName = employee.shift
+    ? `${employee.shift.name} · ${employee.shift.start_time?.slice(0,5)}–${employee.shift.end_time?.slice(0,5)}`
+    : 'Belum diatur'
 
   return (
-    <div className="space-y-8">
-      <PageHeader 
-        title="Detail Karyawan" 
-        breadcrumbs={[{ label: 'Karyawan', href: '/karyawan' }, { label: fullName }]}
+    <div className="space-y-5">
+      <PageHeader
+        title="Detail Karyawan"
+        breadcrumbs={[{ label: 'Karyawan', href: '/karyawan' }, { label: name }]}
       >
         <button className="btn-outline">Keluarkan Akun</button>
-        <button className="btn-primary">Ubah Profil</button>
+        <button className="btn-primary">
+          <Edit className="w-3.5 h-3.5 mr-1.5" />
+          Edit Profil
+        </button>
       </PageHeader>
 
-      {/* Profile Header Card */}
-      <div className="bg-sidebar p-8 rounded-2xl shadow-xl relative overflow-hidden text-white flex flex-col md:flex-row gap-8 items-center md:items-end">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/20 rounded-full blur-[80px] -mr-32 -mt-32" />
-        
-        <div className="relative group">
-          <AvatarInitials name={fullName} size="xl" className="ring-4 ring-primary/30 w-32 h-32 md:w-36 md:h-36 text-3xl" />
-          <button className="absolute bottom-2 right-2 p-2 bg-primary text-white rounded-full shadow-lg group-hover:scale-110 transition-transform">
-            <Camera className="w-4 h-4" />
-          </button>
+      {/* ── Hero card ── */}
+      <div className="card-base overflow-hidden">
+        {/* Cover strip */}
+        <div className="h-[80px] bg-gradient-to-r from-slate-800 to-slate-700 relative">
+          <div className="absolute inset-0 opacity-10"
+               style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, hsl(221 83% 53%) 0%, transparent 60%), radial-gradient(circle at 80% 50%, hsl(260 83% 60%) 0%, transparent 60%)' }} />
         </div>
 
-        <div className="text-center md:text-left space-y-2 relative h-full flex flex-col justify-end pb-2">
-          <div className="flex flex-col md:flex-row md:items-center gap-3">
-            <h2 className="text-3xl font-bold">{fullName}</h2>
-            <StatusBadge status={employee.employment_status || 'active'} className="bg-green-500/20 text-green-400 border-none px-3" />
-          </div>
-          <p className="text-white/60 font-medium">{positionName} • <span className="text-primary font-bold">{deptName}</span></p>
-          <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-4">
-            <div className="flex items-center gap-2 text-white/40 text-xs">
-              <UserSquare2 className="w-4 h-4" />
-              <span>{empCode}</span>
+        <div className="px-6 pb-5">
+          {/* Avatar overlapping cover */}
+          <div className="flex items-end gap-4 -mt-8 mb-4">
+            <div className="relative">
+              <AvatarInitials
+                name={name}
+                size="xl"
+                className="w-16 h-16 text-[20px] ring-3 ring-white shadow-md"
+              />
+              <button className="absolute bottom-0 right-0 w-5 h-5 bg-primary rounded-full flex items-center justify-center shadow border-2 border-white">
+                <Camera className="w-2.5 h-2.5 text-white" />
+              </button>
             </div>
-            <div className="flex items-center gap-2 text-white/40 text-xs">
-              <Calendar className="w-4 h-4" />
-              <span>Bergabung: {formatDate(employee.hire_date, 'short')}</span>
+
+            <div className="pb-1 flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-[18px] font-semibold text-foreground tracking-tight">{name}</h2>
+                <StatusBadge status={employee.employment_status || 'active'} />
+              </div>
+              <p className="text-[13px] text-muted-foreground mt-0.5">
+                {position}
+                <span className="text-border mx-1.5">·</span>
+                <span className="text-primary font-medium">{dept}</span>
+              </p>
+            </div>
+
+            {/* Quick info chips */}
+            <div className="hidden lg:flex items-center gap-2 pb-1">
+              {[
+                { icon: UserSquare2, val: code },
+                { icon: Calendar,    val: `Bergabung ${formatDate(employee.hire_date, 'short')}` },
+              ].map(({ icon: Icon, val }) => (
+                <div key={val} className="flex items-center gap-1.5 px-2.5 py-1 bg-muted/60 rounded-md border border-border/60">
+                  <Icon className="w-3 h-3 text-muted-foreground" />
+                  <span className="text-[12px] text-muted-foreground">{val}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Mobile quick info */}
+          <div className="flex flex-wrap items-center gap-2 lg:hidden">
+            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+              <UserSquare2 className="w-3 h-3" />{code}
+            </div>
+            <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+              <Calendar className="w-3 h-3" />Bergabung {formatDate(employee.hire_date, 'short')}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="flex items-center gap-1 bg-white p-1 rounded-xl border w-fit mx-auto lg:mx-0">
-        {tabs.map((tab) => (
+      {/* ── Tabs ── */}
+      <div className="flex items-center gap-0.5 bg-muted/40 p-1 rounded-lg border border-border/60 w-fit">
+        {TABS.map(t => (
           <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            key={t.id}
+            onClick={() => setTab(t.id)}
             className={cn(
-              "flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold transition-all",
-              activeTab === tab.id 
-                ? "bg-muted text-primary shadow-sm" 
-                : "text-muted-foreground hover:bg-slate-50"
+              'flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-[12.5px] font-medium transition-all',
+              tab === t.id
+                ? 'bg-white text-foreground shadow-sm border border-border/60'
+                : 'text-muted-foreground hover:text-foreground',
             )}
           >
-            <tab.icon className="w-4 h-4" />
-            {tab.label}
+            <t.icon className="w-3.5 h-3.5" />
+            {t.label}
           </button>
         ))}
       </div>
 
-      {/* Tab Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Profile Details */}
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-card p-6 rounded-xl border shadow-sm">
-            <div className="flex items-center justify-between mb-6 border-b pb-4">
-              <h3 className="text-lg font-bold">Data Pribadi</h3>
-              <Briefcase className="w-5 h-5 text-muted-foreground" />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-12">
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Email Perusahaan</p>
-                <div className="flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-primary" />
-                  <p className="font-semibold">{employee.email || '-'}</p>
+      {/* ── Tab content ── */}
+      {tab === 'profile' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          {/* Main info */}
+          <div className="lg:col-span-2 space-y-4">
+            <SectionCard title="Data Pribadi" icon={<Briefcase className="w-4 h-4" />}>
+              <InfoGrid>
+                <InfoItem icon={<Mail className="w-3.5 h-3.5 text-primary" />} label="Email" value={employee.email || '—'} />
+                <InfoItem icon={<Phone className="w-3.5 h-3.5 text-primary" />} label="Telepon" value={employee.phone || '—'} />
+                <InfoItem icon={<MapPin className="w-3.5 h-3.5 text-primary" />} label="Alamat" value={employee.address || '—'} span />
+              </InfoGrid>
+            </SectionCard>
+
+            <SectionCard
+              title="Face Recognition"
+              icon={<Camera className="w-4 h-4" />}
+              action={
+                <span className={cn(
+                  'text-[10.5px] font-semibold px-2 py-0.5 rounded border',
+                  employee.face_image_url
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60'
+                    : 'bg-amber-50 text-amber-700 border-amber-200/60',
+                )}>
+                  {employee.face_image_url ? 'TERDAFTAR' : 'BELUM TERDAFTAR'}
+                </span>
+              }
+            >
+              <div className="flex items-start gap-6">
+                <div className="w-24 h-32 bg-muted rounded-lg border-2 border-dashed border-border flex items-center justify-center overflow-hidden shrink-0">
+                  {employee.face_image_url
+                    ? <img src={employee.face_image_url} alt="Face" className="w-full h-full object-cover" />
+                    : <Camera className="w-6 h-6 text-muted-foreground/25" />}
+                </div>
+                <div className="flex-1 space-y-3">
+                  <p className="text-[12.5px] text-muted-foreground leading-relaxed">
+                    Data wajah digunakan untuk validasi check-in via aplikasi mobile. Pastikan foto jelas, tanpa kacamata hitam atau topi.
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button className="btn-primary text-[12px] px-4 py-1.5">Upload Foto Baru</button>
+                    {employee.face_image_url && (
+                      <button className="btn-outline text-[12px] px-4 py-1.5 text-red-500 border-red-200 hover:bg-red-50">Hapus</button>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Nomor Telepon</p>
-                <div className="flex items-center gap-2">
-                  <Phone className="w-4 h-4 text-primary" />
-                  <p className="font-semibold">{employee.phone || '-'}</p>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Alamat Domisili</p>
-                <div className="flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-primary" />
-                  <p className="font-semibold text-sm leading-relaxed">{employee.address || '-'}</p>
-                </div>
-              </div>
-            </div>
+            </SectionCard>
           </div>
 
-          <div className="bg-card p-6 rounded-xl border shadow-sm">
-            <div className="flex items-center justify-between mb-6 border-b pb-4">
-              <h3 className="text-lg font-bold">Face Recognition</h3>
-              <p className={cn(
-                "font-bold text-xs px-2 py-1 rounded",
-                employee.face_image_url ? "text-green-600 bg-green-50" : "text-amber-600 bg-amber-50"
-              )}>
-                {employee.face_image_url ? 'TERDAFTAR' : 'BELUM TERDAFTAR'}
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row items-center gap-8">
-              <div className="w-32 h-40 bg-muted rounded-xl border-2 border-dashed flex items-center justify-center overflow-hidden">
-                {employee.face_image_url ? (
-                  <img src={employee.face_image_url} alt="Face preview" className="w-full h-full object-cover" />
-                ) : (
-                  <Camera className="w-8 h-8 text-muted-foreground/30" />
-                )}
+          {/* Sidebar */}
+          <div className="space-y-4">
+            <SectionCard title="Informasi Kontrak" icon={<Briefcase className="w-4 h-4" />}>
+              <div className="space-y-3">
+                {[
+                  { icon: <History className="w-3.5 h-3.5 text-blue-500" />,  bg: 'bg-blue-50',  label: 'Tipe Karyawan', val: employee.employment_status || '—' },
+                  { icon: <Clock className="w-3.5 h-3.5 text-amber-500" />, bg: 'bg-amber-50', label: 'Shift Kerja',    val: shiftName },
+                  { icon: <Building2 className="w-3.5 h-3.5 text-primary" />, bg: 'bg-primary/10', label: 'Departemen',   val: dept },
+                ].map(row => (
+                  <div key={row.label} className="flex items-start gap-3">
+                    <div className={cn('w-7 h-7 rounded-md flex items-center justify-center shrink-0', row.bg)}>
+                      {row.icon}
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-muted-foreground leading-none">{row.label}</p>
+                      <p className="text-[13px] font-medium text-foreground mt-1 capitalize">{row.val}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <div className="flex-1 space-y-4 text-center sm:text-left">
-                <p className="text-sm text-muted-foreground leading-relaxed">
-                  Data wajah digunakan untuk validasi check-in via perangkat mobile. Pastikan foto jelas tanpa kacamata hitam atau topi.
-                </p>
-                <div className="flex items-center justify-center sm:justify-start gap-2">
-                  <button className="btn-primary text-xs px-6">Upload Foto Baru</button>
-                  {employee.face_image_url && (
-                    <button className="btn-outline text-xs px-6">Hapus Data Wajah</button>
-                  )}
-                </div>
-              </div>
-            </div>
+            </SectionCard>
           </div>
         </div>
+      )}
 
-        {/* Sidebar Info */}
-        <div className="space-y-6 text-left">
-          <div className="bg-card p-6 rounded-xl border shadow-sm">
-            <h3 className="text-sm font-bold uppercase tracking-widest mb-6">Informasi Kontrak</h3>
-            <div className="space-y-6">
-              <div className="flex gap-4">
-                <div className="p-2 bg-blue-50 rounded-lg shrink-0">
-                  <History className="w-4 h-4 text-blue-600" />
-                </div>
-                <div className="text-left">
-                  <p className="text-xs font-bold text-muted-foreground">Tipe Karyawan</p>
-                  <p className="text-sm font-bold capitalize">{employee.employment_status || '-'}</p>
-                </div>
-              </div>
-              <div className="flex gap-4">
-                <div className="p-2 bg-amber-50 rounded-lg shrink-0">
-                  <Clock className="w-4 h-4 text-amber-600" />
-                </div>
-                <div className="text-left">
-                  <p className="text-xs font-bold text-muted-foreground">Jam Kerja / Shift</p>
-                  <p className="text-sm font-bold">{shiftName}</p>
-                </div>
-              </div>
-            </div>
-          </div>
+      {tab === 'attendance' && (
+        <div className="card-base flex items-center justify-center py-16">
+          <p className="text-[13px] text-muted-foreground">Riwayat absensi akan tampil di sini</p>
         </div>
+      )}
+
+      {tab === 'leave' && (
+        <div className="card-base flex items-center justify-center py-16">
+          <p className="text-[13px] text-muted-foreground">Riwayat cuti akan tampil di sini</p>
+        </div>
+      )}
+
+      {tab === 'security' && (
+        <div className="card-base flex items-center justify-center py-16">
+          <p className="text-[13px] text-muted-foreground">Pengaturan keamanan akan tampil di sini</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Sub-components ── */
+
+function SectionCard({ title, icon, action, children }: {
+  title: string; icon: React.ReactNode; action?: React.ReactNode; children: React.ReactNode
+}) {
+  return (
+    <div className="card-base">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border/60">
+        <div className="flex items-center gap-2 text-[13px] font-semibold text-foreground">
+          <span className="text-muted-foreground">{icon}</span>
+          {title}
+        </div>
+        {action}
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  )
+}
+
+function InfoGrid({ children }: { children: React.ReactNode }) {
+  return <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">{children}</div>
+}
+
+function InfoItem({ icon, label, value, span }: {
+  icon: React.ReactNode; label: string; value: string; span?: boolean
+}) {
+  return (
+    <div className={cn('flex items-start gap-2.5', span && 'sm:col-span-2')}>
+      <div className="mt-0.5 shrink-0">{icon}</div>
+      <div>
+        <p className="text-[11px] text-muted-foreground leading-none mb-1">{label}</p>
+        <p className="text-[13px] font-medium text-foreground">{value}</p>
       </div>
     </div>
   )

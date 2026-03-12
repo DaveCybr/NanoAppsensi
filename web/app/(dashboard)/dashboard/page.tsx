@@ -19,7 +19,7 @@ import { formatNumber } from '@/lib/utils/format'
 
 export default function DashboardPage() {
   const { data: todayStats, loading: statsLoading } = useApi<any>('/api/attendance/today')
-  const { data: leaveData } = useApi<any>('/api/leave/requests?status=pending&limit=1')
+  const { meta: leaveMetadata } = useApi<any>('/api/leave/requests?status=pending&limit=1')
   
   const stats = [
     { 
@@ -45,7 +45,7 @@ export default function DashboardPage() {
     },
     { 
       label: 'Permintaan Pending', 
-      value: formatNumber(leaveData?.meta?.total_count || 0), 
+      value: formatNumber(leaveMetadata?.total || 0), 
       icon: Clock, 
       color: 'red' as const, 
       trend: { value: 0, isUp: true } 

@@ -31,19 +31,18 @@ export default function CutiPage() {
   queryParams.set('year', String(selectedYear))
   queryParams.set('limit', '50')
 
-  const { data: leaveData, loading, refetch } = useApi<any>(`/api/leave/requests?${queryParams.toString()}`)
-  const rawLeaves = leaveData?.data || []
+  const { data: rawLeaves, loading, refetch } = useApi<any[]>(`/api/leave/requests?${queryParams.toString()}`)
+  const leaves = rawLeaves || []
   
   // Filter search locally for now as API might not support it directly in LeaveQuerySchema 
-  // (Wait, LeaveQuerySchema doesn't have search, but route handler doesn't seem to use it either)
-  const leaves = rawLeaves.filter((l: any) => 
+  const filteredLeaves = leaves.filter((l: any) => 
     l.employee?.full_name?.toLowerCase().includes(debouncedSearch.toLowerCase())
   )
 
   const stats = {
-    pending: rawLeaves.filter((l: any) => l.status === 'pending').length,
-    approvedOfMonth: rawLeaves.filter((l: any) => l.status === 'approved').length,
-    rejected: rawLeaves.filter((l: any) => l.status === 'rejected').length,
+    pending: leaves.filter((l: any) => l.status === 'pending').length,
+    approvedOfMonth: leaves.filter((l: any) => l.status === 'approved').length,
+    rejected: leaves.filter((l: any) => l.status === 'rejected').length,
   }
 
   const handleReview = async (id: string, action: 'approve' | 'reject') => {
@@ -164,7 +163,7 @@ export default function CutiPage() {
           </div>
         )}
         <LeaveTable 
-          data={leaves.map((l: any) => ({
+          data={filteredLeaves.map((l: any) => ({
             id: l.id,
             employee_name: l.employee?.full_name || 'Unknown',
             leave_type: l.leave_type?.name || '-',

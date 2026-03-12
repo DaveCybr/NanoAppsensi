@@ -2,39 +2,35 @@
 
 import React, { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { ShieldCheck, Mail, Lock, Eye, EyeOff, Loader2, CheckCircle2 } from 'lucide-react'
-import { cn } from '@/lib/utils/cn'
+import { Eye, EyeOff, Loader2, CheckCircle2, AlertCircle } from 'lucide-react'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail]               = useState('')
+  const [password, setPassword]         = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const setupSuccess = searchParams.get('setup') === 'success'
+  const [loading, setLoading]           = useState(false)
+  const [error, setError]               = useState<string | null>(null)
+  const router                          = useRouter()
+  const searchParams                    = useSearchParams()
+  const setupSuccess                    = searchParams.get('setup') === 'success'
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
-
     try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
+      const res  = await fetch('/api/auth/login', {
+        method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body:    JSON.stringify({ email, password }),
       })
-
       const json = await res.json()
-
       if (json.success) {
         router.push('/dashboard')
       } else {
         setError(json.error || 'Email atau password salah.')
       }
-    } catch (err) {
+    } catch {
       setError('Terjadi kesalahan koneksi. Silakan coba lagi.')
     } finally {
       setLoading(false)
@@ -42,119 +38,217 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col md:flex-row bg-background font-sans">
-      {/* Left side: branding/image */}
-      <div className="hidden md:flex flex-1 bg-sidebar p-12 flex-col justify-between relative overflow-hidden">
-        {/* Decorative background effects */}
-        <div className="absolute top-[-10%] right-[-10%] w-[50%] h-[50%] bg-primary/20 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[100px]" />
-        
-        <div className="flex items-center gap-3 relative z-10">
-          <div className="w-10 h-10 bg-primary rounded-xl flex items-center justify-center shadow-lg shadow-primary/30">
-            <ShieldCheck className="w-6 h-6 text-white" />
+    <main style={{ display: 'flex', minHeight: '100vh', backgroundColor: '#f8fafc' }}>
+
+      {/* ── Left panel ── */}
+      <div style={{
+        width: '420px',
+        minWidth: '420px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+        padding: '40px',
+        backgroundColor: '#0f172a',
+        position: 'relative',
+        overflow: 'hidden',
+      }}>
+        {/* Glow blobs */}
+        <div style={{
+          position: 'absolute', top: '-60px', right: '-60px',
+          width: '260px', height: '260px', borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(59,130,246,0.25) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+        <div style={{
+          position: 'absolute', bottom: '-60px', left: '-60px',
+          width: '200px', height: '200px', borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(37,99,235,0.18) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+
+        {/* Logo */}
+        <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{
+            width: '34px', height: '34px', borderRadius: '10px',
+            backgroundColor: '#2563eb', display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(37,99,235,0.4)',
+          }}>
+            <span style={{ color: '#fff', fontWeight: 700, fontSize: '15px' }}>N</span>
           </div>
-          <span className="font-bold text-2xl tracking-tight text-white">NanoApp HR</span>
+          <div>
+            <div style={{ color: '#fff', fontWeight: 600, fontSize: '14px', lineHeight: 1 }}>NanoApp</div>
+            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px', fontWeight: 500, letterSpacing: '0.12em', marginTop: '3px', textTransform: 'uppercase' }}>HR System</div>
+          </div>
         </div>
 
-        <div className="relative z-10 max-w-lg">
-          <h1 className="text-5xl font-extrabold text-white leading-tight mb-6">
-            Kelola SDM Lebih Efisien Dengan <span className="text-primary">NanoApp</span>
+        {/* Hero text */}
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <h1 style={{
+            color: '#fff', fontSize: '28px', fontWeight: 600,
+            lineHeight: 1.35, letterSpacing: '-0.02em', margin: 0,
+          }}>
+            Kelola SDM Lebih<br />Efisien Dengan<br />
+            <span style={{ color: '#60a5fa' }}>NanoApp</span>
           </h1>
-          <p className="text-white/60 text-lg leading-relaxed">
-            Sistem manajemen HR terintegrasi untuk absensi, cuti, shift kerja, dan penggajian karyawan dalam satu platform yang aman dan mudah digunakan.
+          <p style={{ color: 'rgba(255,255,255,0.38)', fontSize: '13px', marginTop: '14px', lineHeight: 1.6 }}>
+            Sistem HR terintegrasi untuk absensi, cuti, shift, dan penggajian dalam satu platform.
           </p>
         </div>
 
-        <div className="text-white/40 text-sm relative z-10">
-          &copy; {new Date().getFullYear()} NanoApp Sensitivitas. Seluruh hak cipta dilindungi.
+        {/* Features */}
+        <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          {['Absensi wajah real-time', 'Manajemen cuti otomatis', 'Laporan kehadiran lengkap'].map(f => (
+            <div key={f} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <div style={{
+                width: '16px', height: '16px', borderRadius: '50%',
+                backgroundColor: 'rgba(59,130,246,0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#60a5fa' }} />
+              </div>
+              <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '12px' }}>{f}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ position: 'relative', zIndex: 1, color: 'rgba(255,255,255,0.2)', fontSize: '11px' }}>
+          © {new Date().getFullYear()} NanoApp Sensitivitas
         </div>
       </div>
 
-      {/* Right side: login form */}
-      <div className="flex-1 flex items-center justify-center p-6 sm:p-12 md:p-24 lg:p-32 bg-slate-50">
-        <div className="w-full max-w-md space-y-8 animate-in fade-in slide-in-from-right-8 duration-500">
-          <div className="space-y-2">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground">Selamat Datang</h2>
-            <p className="text-muted-foreground">Silakan masuk ke akun Anda untuk melanjutkan.</p>
+      {/* ── Right panel ── */}
+      <div style={{
+        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '48px 24px',
+      }}>
+        <div style={{ width: '100%', maxWidth: '360px' }}>
+
+          {/* Header */}
+          <div style={{ marginBottom: '28px' }}>
+            <h2 style={{ fontSize: '20px', fontWeight: 600, color: '#111827', margin: 0, letterSpacing: '-0.015em' }}>
+              Masuk ke akun Anda
+            </h2>
+            <p style={{ fontSize: '13px', color: '#6b7280', marginTop: '6px' }}>
+              Gunakan email perusahaan untuk melanjutkan
+            </p>
           </div>
 
+          {/* Setup success */}
           {setupSuccess && (
-            <div className="p-4 bg-green-50 border border-green-100 rounded-xl flex items-start gap-3 text-green-700 text-sm animate-in slide-in-from-top duration-500">
-              <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
-              <div className="text-left">
-                <p className="font-bold">Setup Berhasil!</p>
-                <p className="opacity-80">Silakan login dengan akun administrator yang baru saja Anda buat.</p>
+            <div style={{
+              display: 'flex', alignItems: 'flex-start', gap: '10px',
+              padding: '12px 14px', backgroundColor: '#f0fdf4',
+              border: '1px solid #bbf7d0', borderRadius: '8px',
+              color: '#166534', marginBottom: '20px',
+            }}>
+              <CheckCircle2 size={15} style={{ marginTop: '1px', flexShrink: 0 }} />
+              <div>
+                <p style={{ fontSize: '12px', fontWeight: 600, margin: 0 }}>Setup berhasil!</p>
+                <p style={{ fontSize: '12px', color: '#15803d', margin: '3px 0 0' }}>Login menggunakan akun admin yang baru dibuat.</p>
               </div>
             </div>
           )}
 
+          {/* Error */}
           {error && (
-            <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 text-sm animate-in shake duration-300">
-              <span className="w-2 h-2 bg-red-500 rounded-full shrink-0" />
-              {error}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '10px',
+              padding: '12px 14px', backgroundColor: '#fef2f2',
+              border: '1px solid #fecaca', borderRadius: '8px',
+              color: '#dc2626', marginBottom: '20px',
+            }}>
+              <AlertCircle size={15} style={{ flexShrink: 0 }} />
+              <p style={{ fontSize: '12px', margin: 0 }}>{error}</p>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-5">
-            <div className="space-y-1.5 text-left">
-              <label className="text-sm font-semibold text-foreground dark:text-gray-200">Email Perusahaan</label>
-              <div className="relative group">
-                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                <input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@nanoapp.com"
-                  required
-                  className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm shadow-sm"
-                />
-              </div>
+          {/* Form */}
+          <form onSubmit={handleLogin}>
+            {/* Email */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '12px', fontWeight: 500, color: '#374151', marginBottom: '6px' }}>
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="admin@perusahaan.com"
+                required
+                style={{
+                  width: '100%', padding: '10px 12px', boxSizing: 'border-box',
+                  backgroundColor: '#fff', border: '1px solid #e5e7eb',
+                  borderRadius: '8px', fontSize: '13px', color: '#111827',
+                  outline: 'none', transition: 'border-color 0.15s',
+                }}
+                onFocus={e => (e.target.style.borderColor = '#3b82f6')}
+                onBlur={e => (e.target.style.borderColor = '#e5e7eb')}
+              />
             </div>
 
-            <div className="space-y-1.5 text-left">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-semibold text-foreground dark:text-gray-200">Kata Sandi</label>
-                <a href="#" className="text-xs font-semibold text-primary hover:underline">Lupa sandi?</a>
+            {/* Password */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <label style={{ fontSize: '12px', fontWeight: 500, color: '#374151' }}>Kata Sandi</label>
+                <a href="#" style={{ fontSize: '12px', color: '#2563eb', textDecoration: 'none' }}>Lupa sandi?</a>
               </div>
-              <div className="relative group">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground group-focus-within:text-primary transition-colors" />
-                <input 
+              <div style={{ position: 'relative' }}>
+                <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full pl-12 pr-12 py-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all text-sm shadow-sm"
+                  style={{
+                    width: '100%', padding: '10px 40px 10px 12px', boxSizing: 'border-box',
+                    backgroundColor: '#fff', border: '1px solid #e5e7eb',
+                    borderRadius: '8px', fontSize: '13px', color: '#111827',
+                    outline: 'none', transition: 'border-color 0.15s',
+                  }}
+                  onFocus={e => (e.target.style.borderColor = '#3b82f6')}
+                  onBlur={e => (e.target.style.borderColor = '#e5e7eb')}
                 />
-                <button 
+                <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  style={{
+                    position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', cursor: 'pointer', color: '#9ca3af', padding: '2px',
+                  }}
                 >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  {showPassword ? <EyeOff size={15} /> : <Eye size={15} />}
                 </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="remember" className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary" />
-              <label htmlFor="remember" className="text-sm text-muted-foreground">Ingat saya di perangkat ini</label>
+            {/* Remember */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+              <input type="checkbox" id="remember" style={{ width: '14px', height: '14px', accentColor: '#2563eb' }} />
+              <label htmlFor="remember" style={{ fontSize: '12px', color: '#6b7280', cursor: 'pointer' }}>
+                Ingat saya di perangkat ini
+              </label>
             </div>
 
-            <button 
-              type="submit" 
+            {/* Submit */}
+            <button
+              type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-primary text-primary-foreground rounded-xl font-bold shadow-lg shadow-primary/20 hover:bg-primary/90 hover:-translate-y-0.5 active:translate-y-0 transition-all flex items-center justify-center gap-2"
+              style={{
+                width: '100%', padding: '10px',
+                backgroundColor: loading ? '#93c5fd' : '#2563eb',
+                color: '#fff', border: 'none', borderRadius: '8px',
+                fontSize: '13px', fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                boxShadow: '0 2px 8px rgba(37,99,235,0.3)', transition: 'background-color 0.15s',
+              }}
             >
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Masuk Sekarang'}
+              {loading ? <><Loader2 size={15} className="animate-spin" /> Memproses...</> : 'Masuk'}
             </button>
           </form>
 
-          <div className="text-center">
-            <p className="text-sm text-muted-foreground">
-              Kesulitan masuk? <a href="#" className="font-semibold text-primary hover:underline">Hubungi IT Support</a>
-            </p>
-          </div>
+          <p style={{ textAlign: 'center', fontSize: '12px', color: '#9ca3af', marginTop: '20px' }}>
+            Kesulitan masuk?{' '}
+            <a href="#" style={{ color: '#2563eb', fontWeight: 500, textDecoration: 'none' }}>Hubungi IT Support</a>
+          </p>
         </div>
       </div>
     </main>

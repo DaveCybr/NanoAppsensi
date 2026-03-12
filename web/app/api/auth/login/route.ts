@@ -9,8 +9,8 @@
 // Flutter kirim header: X-Client: mobile
 // Web tidak perlu header khusus
 // ============================================================
-import { NextRequest } from 'next/server'
-import { createClient, createAdminClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { createRouteClient, createAdminClient } from '@/lib/supabase/server'
 import { LoginSchema } from '@/lib/validations/auth'
 import {
   ok, badRequest, unauthorized, serverError,
@@ -32,15 +32,19 @@ export async function POST(request: NextRequest) {
     const { email, password } = parsed.data
     const isMobileClient = request.headers.get('X-Client') === 'mobile'
 
-    // ── 2. Login via Supabase Auth ─────────────────────
-    const supabase = createClient()
+    // ── 2. Siapkan response dulu agar cookie bisa di-set
+    // createRouteClient butuh response object untuk menulis cookie
+    const response = NextResponse.json({ success: true }) // placeholder, akan diganti
+
+    // ── 3. Login via Supabase Auth ─────────────────────
+    // Pakai createRouteClient agar session cookie tersimpan ke browser
+    const supabase = createRouteClient(request, response)
     const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
       email,
       password,
     })
 
     if (authError || !authData.user) {
-      // Supabase error message dalam bahasa Inggris — translate
       if (authError?.message?.includes('Invalid login credentials')) {
         return unauthorized('Email atau password salah.')
       }
@@ -50,7 +54,7 @@ export async function POST(request: NextRequest) {
       return unauthorized('Login gagal. Silakan coba lagi.')
     }
 
-    // ── 3. Ambil data user dari public.users ───────────
+    // ── 4. Ambil data user dari public.users ───────────
     const admin = createAdminClient()
     const { data: userData, error: userError } = await admin
       .from('users')
@@ -67,12 +71,11 @@ export async function POST(request: NextRequest) {
     }
 
     if (!userData.is_active) {
-      // Logout dulu biar session tidak menggantung
       await supabase.auth.signOut()
       return unauthorized('Akun kamu tidak aktif. Hubungi administrator.')
     }
 
-    // ── 4. Cek akun terkunci ───────────────────────────
+    // ── 5. Cek akun terkunci ───────────────────────────
     const { data: lockCheck } = await admin
       .from('users')
       .select('locked_until, failed_login_count')
@@ -89,7 +92,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ── 5. Update last_login + reset failed count ──────
+    // ── 6. Update last_login + reset failed count ──────
     await admin
       .from('users')
       .update({
@@ -99,7 +102,7 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', authData.user.id)
 
-    // ── 6. Build AuthUser response ─────────────────────
+    // ── 7. Build AuthUser response ─────────────────────
     const role = (Array.isArray(userData.role) ? userData.role[0] : userData.role) as { name: string } | null
     const employee = userData.employee as { id: string }[] | null
 
@@ -113,22 +116,35 @@ export async function POST(request: NextRequest) {
       is_active: userData.is_active,
     }
 
-    // ── 7. Response berbeda untuk web vs mobile ────────
+    // ── 8. Response berbeda untuk web vs mobile ────────
     if (isMobileClient) {
-      // Flutter butuh token eksplisit
+      // Flutter butuh token eksplisit — tidak butuh cookie
       const session = authData.session
-      const response: LoginResponse = {
+      const mobilePayload: LoginResponse = {
         user: authUser,
         access_token: session?.access_token ?? '',
         refresh_token: session?.refresh_token ?? '',
         expires_at: session?.expires_at ?? 0,
       }
-      return ok<LoginResponse>(response, 'Login berhasil.')
+      return ok<LoginResponse>(mobilePayload, 'Login berhasil.')
     }
 
-    // Web: cookie sudah di-set otomatis oleh Supabase SSR
-    // Hanya return user info
-    return ok({ user: authUser }, 'Login berhasil.')
+    // ── 9. Web: kembalikan response yang sudah membawa cookie ──
+    // PENTING: kita harus return `response` yang sama yang dipakai
+    // createRouteClient, karena cookie sudah di-set ke object ini
+    const webResponse = NextResponse.json(
+      { success: true, data: { user: authUser }, message: 'Login berhasil.' },
+      { status: 200 }
+    )
+
+    // Copy semua cookie dari response placeholder ke response final via headers
+    // untuk memastikan semua atribut (Path, HttpOnly, dsb) terbawa dengan benar
+    const setCookieHeaders = response.headers.getSetCookie()
+    setCookieHeaders.forEach(cookie => {
+      webResponse.headers.append('Set-Cookie', cookie)
+    })
+
+    return webResponse
 
   } catch (error) {
     return serverError(error)

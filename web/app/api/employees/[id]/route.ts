@@ -38,7 +38,11 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         position:positions(id, name),
         work_location:work_locations(id, name, address),
         manager:employees!employees_manager_id_fkey(id, full_name, employee_code),
-        user:users!employees_user_id_fkey(id, email, last_login, is_active)
+        user:users!employees_user_id_fkey(id, email, last_login, is_active),
+        employee_shifts(
+          id, start_date, end_date,
+          shift:shifts(id, name, start_time, end_time)
+        )
       `)
       .eq('id', params.id)
       .eq('tenant_id', user.tenant_id)
@@ -47,13 +51,20 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
 
     if (error || !data) return notFound('Karyawan')
 
-    // Flatten email ke level atas
+    // Ambil shift yang saat ini (yang terbaru atau yang tidak punya end_date)
+    const activeShift = (data.employee_shifts as any[])?.sort((a, b) => 
+      new Date(b.start_date).getTime() - new Date(a.start_date).getTime()
+    )[0]?.shift || null
+
+    // Flatten email ke level atas & siapkan object employee
     const employee = {
       ...data,
       email:      (data.user as any)?.email ?? null,
       last_login: (data.user as any)?.last_login ?? null,
       is_active:  (data.user as any)?.is_active ?? null,
+      shift:      activeShift,
       user:       undefined,
+      employee_shifts: undefined,
     }
 
     return ok(employee)

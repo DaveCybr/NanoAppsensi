@@ -3,7 +3,7 @@
 // Auth helpers — extract user, validasi token, ambil permissions
 // ============================================================
 import { NextRequest } from 'next/server'
-import { createClient, createBearerClient } from '@/lib/supabase/server'
+import { createClient, createBearerClient, createAdminClient } from '@/lib/supabase/server'
 import { unauthorized } from '@/lib/utils/response'
 import { AuthUser } from '@/types/api'
 
@@ -47,7 +47,8 @@ async function buildAuthUser(
   supabase: ReturnType<typeof createClient>,
   userId: string
 ): Promise<AuthUser | null> {
-  const { data, error } = await supabase
+  const admin = createAdminClient()
+  const { data, error } = await admin
     .from('users')
     .select(`
       id, email, full_name, tenant_id, is_active,

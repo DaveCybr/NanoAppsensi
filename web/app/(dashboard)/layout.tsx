@@ -2,32 +2,24 @@
 
 import React, { useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
-import { useRouter, usePathname } from 'next/navigation'
+import { useRouter } from 'next/navigation'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
-import { cn } from '@/lib/utils/cn'
+import { MobileNav } from '@/components/layout/MobileNav'
 import { LoadingSkeleton } from '@/components/ui/LoadingSkeleton'
 
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   const router = useRouter()
-  const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
-  // Auth Guard
   React.useEffect(() => {
-    if (!loading && !user) {
-      router.replace('/login')
-    }
+    if (!loading && !user) router.replace('/login')
   }, [user, loading, router])
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-8">
+      <div className="min-h-screen flex items-center justify-center">
         <LoadingSkeleton variant="stats" />
       </div>
     )
@@ -36,30 +28,25 @@ export default function DashboardLayout({
   if (!user) return null
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC]">
+    <div className="min-h-screen bg-surface">
       <Sidebar />
-      
-      {/* Mobile Drawer Overlay */}
-      {mobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-50 md:hidden animate-in fade-in duration-300"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
 
-      {/* Main Content */}
-      <div className="transition-all duration-300 flex flex-col min-h-screen md:pl-64">
+      {/* Mobile nav */}
+      <MobileNav isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
+
+      {/* Offset container — left matches sidebar width */}
+      <div className="md:pl-[220px] transition-all duration-300 flex flex-col min-h-screen">
         <TopBar onMobileMenuOpen={() => setMobileMenuOpen(true)} />
-        
-        <main className="flex-1 mt-16 p-4 md:p-8 overflow-y-auto">
-          <div className="max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-both">
+
+        {/* Page body */}
+        <main className="flex-1 mt-[52px] p-5 md:p-7 overflow-y-auto">
+          <div className="max-w-[1400px] mx-auto animate-in fade-in slide-in-from-bottom-3 duration-400 fill-mode-both">
             {children}
           </div>
         </main>
-        
-        {/* Footer */}
-        <footer className="py-4 px-8 border-t bg-white text-center text-xs text-muted-foreground">
-          &copy; {new Date().getFullYear()} NanoApp HR System. Dibuat dengan &hearts; oleh Tim Pengembang.
+
+        <footer className="py-3 px-6 border-t border-border bg-white text-center text-[11px] text-muted-foreground/60">
+          © {new Date().getFullYear()} NanoApp HR System
         </footer>
       </div>
     </div>
