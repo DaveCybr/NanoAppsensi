@@ -1,8 +1,8 @@
 "use client"
 
 import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { ShieldCheck, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { ShieldCheck, Mail, Lock, Eye, EyeOff, Loader2, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
 
 export default function LoginPage() {
@@ -12,6 +12,8 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const setupSuccess = searchParams.get('setup') === 'success'
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -75,6 +77,16 @@ export default function LoginPage() {
             <h2 className="text-3xl font-bold tracking-tight text-foreground">Selamat Datang</h2>
             <p className="text-muted-foreground">Silakan masuk ke akun Anda untuk melanjutkan.</p>
           </div>
+
+          {setupSuccess && (
+            <div className="p-4 bg-green-50 border border-green-100 rounded-xl flex items-start gap-3 text-green-700 text-sm animate-in slide-in-from-top duration-500">
+              <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+              <div className="text-left">
+                <p className="font-bold">Setup Berhasil!</p>
+                <p className="opacity-80">Silakan login dengan akun administrator yang baru saja Anda buat.</p>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-600 text-sm animate-in shake duration-300">

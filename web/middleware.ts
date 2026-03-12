@@ -8,6 +8,8 @@ import { NextResponse, type NextRequest } from 'next/server'
 // Route yang tidak butuh autentikasi
 const PUBLIC_ROUTES = [
   '/login',
+  '/setup',
+  '/api/setup',
   '/api/auth/login',
   '/api/health',
 ]
@@ -21,6 +23,23 @@ export async function middleware(request: NextRequest) {
 
   // ── Skip public routes ─────────────────────────────────
   const isPublic = PUBLIC_ROUTES.some(route => pathname.startsWith(route))
+  
+  // ── Setup Wizard Check ─────────────────────────────────
+  // Jangan cek setup jika sedang di halaman setup atau API setup
+  if (!pathname.startsWith('/setup') && !pathname.startsWith('/api/setup')) {
+    try {
+      // Cek apakah setup dibutuhkan. Menggunakan origin request untuk absolute URL.
+      const checkRes = await fetch(new URL('/api/setup/check', request.url))
+      const { data } = await checkRes.json()
+      
+      if (data?.needs_setup) {
+        return NextResponse.redirect(new URL('/setup', request.url))
+      }
+    } catch (err) {
+      console.error('Setup check failed:', err)
+    }
+  }
+
   if (isPublic) return NextResponse.next()
 
   // ── API routes: passthrough, auth ditangani di handler ─
