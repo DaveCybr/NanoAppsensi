@@ -2,19 +2,21 @@
 
 import React from 'react'
 import { StatusBadge } from '@/components/ui/StatusBadge'
-import { Check, X, Eye } from 'lucide-react'
-import { cn } from '@/lib/utils/cn'
-
-const pendingData = [
-  { id: 1, name: 'Hendra Wijaya', type: 'Cuti Tahunan', date: '12 - 14 Mar 2024', submitted: '10 Mar 2024' },
-  { id: 2, name: 'Indah Permata', type: 'Koreksi Absensi', date: '08 Mar 2024', submitted: '09 Mar 2024' },
-  { id: 3, name: 'Joni Iskandar', type: 'Sakit (Tanpa Surat)', date: '11 Mar 2024', submitted: '11 Mar 2024' },
-  { id: 4, name: 'Kania Putri', type: 'Cuti Melahirkan', date: '20 Mar - 20 Jun 2024', submitted: '05 Mar 2024' },
-]
+import { Check, X, Eye, Loader2 } from 'lucide-react'
+import { useApi } from '@/hooks/useApi'
+import { formatDate } from '@/lib/utils/format'
 
 export function PendingApprovals() {
+  const { data: leaveData, loading } = useApi<any>('/api/leave/requests?status=pending&limit=5')
+  const pendingData = leaveData?.data || []
+
   return (
-    <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
+    <div className="bg-card rounded-lg border shadow-sm overflow-hidden relative text-left">
+      {loading && (
+        <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] z-10 flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      )}
       <div className="p-6 border-b flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold leading-none">Persetujuan Pending</h3>
@@ -35,20 +37,22 @@ export function PendingApprovals() {
             </tr>
           </thead>
           <tbody className="divide-y">
-            {pendingData.map((item) => (
+            {pendingData.map((item: any) => (
               <tr key={item.id} className="hover:bg-muted/30 transition-colors group">
                 <td className="px-6 py-4">
-                  <span className="text-sm font-semibold">{item.name}</span>
+                  <span className="text-sm font-semibold">{item.employee?.full_name}</span>
                 </td>
                 <td className="px-6 py-4">
                   <StatusBadge status="pending" className="font-semibold text-[10px]" />
-                  <span className="ml-2 text-xs text-muted-foreground">{item.type}</span>
+                  <span className="ml-2 text-xs text-muted-foreground">{item.leave_type?.name}</span>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="text-xs text-foreground font-medium">{item.date}</span>
+                  <span className="text-xs text-foreground font-medium">
+                    {formatDate(item.start_date, 'short')} - {formatDate(item.end_date, 'short')}
+                  </span>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="text-xs text-muted-foreground">{item.submitted}</span>
+                  <span className="text-xs text-muted-foreground">{formatDate(item.created_at, 'short')}</span>
                 </td>
                 <td className="px-6 py-4 text-right">
                   <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -65,6 +69,13 @@ export function PendingApprovals() {
                 </td>
               </tr>
             ))}
+            {pendingData.length === 0 && !loading && (
+              <tr>
+                <td colSpan={5} className="px-6 py-8 text-center text-sm text-muted-foreground">
+                  Tidak ada permohonan pending
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

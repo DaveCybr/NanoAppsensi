@@ -12,16 +12,24 @@ import {
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { AvatarInitials } from '@/components/ui/AvatarInitials'
 import { cn } from '@/lib/utils/cn'
+import { formatDate, formatTime } from '@/lib/utils/format'
 
 interface AttendanceRecord {
   id: string
-  employee_name: string
-  date: string
+  attendance_date: string
   check_in: string | null
   check_out: string | null
-  status: 'PRESENT' | 'LATE' | 'ABSENT' | 'WFH' | 'LEAVE'
   late_minutes: number
-  is_valid_location: boolean
+  check_in_is_valid_location: boolean
+  status?: {
+    code: string
+    name: string
+    color: string
+  }
+  employee?: {
+    full_name: string
+    employee_code: string
+  }
 }
 
 interface AttendanceTableProps {
@@ -51,26 +59,29 @@ export function AttendanceTable({ data, onViewDetail }: AttendanceTableProps) {
               <tr key={item.id} className="hover:bg-muted/30 transition-colors group">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <AvatarInitials name={item.employee_name} size="sm" />
-                    <span className="text-sm font-semibold">{item.employee_name}</span>
+                    <AvatarInitials name={item.employee?.full_name || '?'} size="sm" />
+                    <div>
+                      <p className="text-sm font-semibold">{item.employee?.full_name}</p>
+                      <p className="text-[10px] text-muted-foreground">{item.employee?.employee_code}</p>
+                    </div>
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="text-sm text-foreground">{item.date}</span>
+                  <span className="text-sm text-foreground">{formatDate(item.attendance_date, 'short')}</span>
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3 h-3 text-muted-foreground" />
-                    <span className={cn("text-sm font-medium", item.status === 'LATE' ? "text-amber-600" : "text-foreground")}>
-                      {item.check_in || '--:--'}
+                    <span className={cn("text-sm font-medium", item.status?.code === 'LATE' ? "text-amber-600" : "text-foreground")}>
+                      {item.check_in ? formatTime(item.check_in) : '--:--'}
                     </span>
                   </div>
                 </td>
                 <td className="px-6 py-4">
-                  <span className="text-sm text-foreground">{item.check_out || '--:--'}</span>
+                  <span className="text-sm text-foreground">{item.check_out ? formatTime(item.check_out) : '--:--'}</span>
                 </td>
                 <td className="px-6 py-4">
-                  <StatusBadge status={item.status} />
+                  <StatusBadge status={item.status?.code || 'ABSENT'} />
                 </td>
                 <td className="px-6 py-4">
                   {item.late_minutes > 0 ? (
@@ -82,9 +93,9 @@ export function AttendanceTable({ data, onViewDetail }: AttendanceTableProps) {
                 <td className="px-6 py-4">
                   <div className={cn(
                     "flex items-center gap-1.5 text-xs font-medium",
-                    item.is_valid_location ? "text-green-600" : "text-red-600"
+                    item.check_in_is_valid_location ? "text-green-600" : "text-red-600"
                   )}>
-                    {item.is_valid_location ? (
+                    {item.check_in_is_valid_location ? (
                       <><CheckCircle2 className="w-3.5 h-3.5" /> Valid</>
                     ) : (
                       <><XCircle className="w-3.5 h-3.5" /> Invalid</>

@@ -11,19 +11,55 @@ import {
   UserCheck, 
   CalendarCheck, 
   Clock,
-  Download
+  Download,
+  Loader2
 } from 'lucide-react'
+import { useApi } from '@/hooks/useApi'
+import { formatNumber } from '@/lib/utils/format'
 
 export default function DashboardPage() {
+  const { data: todayStats, loading: statsLoading } = useApi<any>('/api/attendance/today')
+  const { data: leaveData } = useApi<any>('/api/leave/requests?status=pending&limit=1')
+  
   const stats = [
-    { label: 'Karyawan Aktif', value: '1,248', icon: Users, color: 'blue' as const, trend: { value: 12, isUp: true } },
-    { label: 'Hadir Hari Ini', value: '1,192', icon: UserCheck, color: 'green' as const, trend: { value: 8, isUp: true, label: 'vs hari lalu' } },
-    { label: 'Cuti Disetujui', value: '24', icon: CalendarCheck, color: 'amber' as const, trend: { value: 5, isUp: false } },
-    { label: 'Permintaan Pending', value: '12', icon: Clock, color: 'red' as const, trend: { value: 3, isUp: true } },
+    { 
+      label: 'Karyawan Aktif', 
+      value: formatNumber(todayStats?.total_employees || 0), 
+      icon: Users, 
+      color: 'blue' as const, 
+      trend: { value: 0, isUp: true } 
+    },
+    { 
+      label: 'Hadir Hari Ini', 
+      value: formatNumber((todayStats?.total_present || 0) + (todayStats?.total_late || 0)), 
+      icon: UserCheck, 
+      color: 'green' as const, 
+      trend: { value: 0, isUp: true, label: 'vs hari lalu' } 
+    },
+    { 
+      label: 'Sedang Cuti', 
+      value: formatNumber(todayStats?.on_leave_today || 0), 
+      icon: CalendarCheck, 
+      color: 'amber' as const, 
+      trend: { value: 0, isUp: false } 
+    },
+    { 
+      label: 'Permintaan Pending', 
+      value: formatNumber(leaveData?.meta?.total_count || 0), 
+      icon: Clock, 
+      color: 'red' as const, 
+      trend: { value: 0, isUp: true } 
+    },
   ]
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 relative text-left">
+      {statsLoading && (
+        <div className="absolute inset-x-0 -top-2 h-1 overflow-hidden">
+          <div className="w-full h-full bg-primary/10 animate-pulse" />
+        </div>
+      )}
+      
       <PageHeader title="Dashboard Analitik">
         <button className="btn-outline">
           <Download className="w-4 h-4 mr-2" />
@@ -61,10 +97,10 @@ export default function DashboardPage() {
         <div className="flex items-center gap-3">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
           <p className="text-sm font-medium">
-            Sistem Berjalan Normal • <span className="text-muted-foreground">Update terakhir: Hari ini, 10:45 WIB</span>
+            Sistem Berjalan Normal • <span className="text-muted-foreground">Update terakhir: {new Date().toLocaleTimeString()} WIB</span>
           </p>
         </div>
-        <div className="text-xs font-semibold text-primary uppercase tracking-widest">
+        <div className="text-xs font-semibold text-primary uppercase tracking-widest text-left">
           NanoApp Real-time Engine Active
         </div>
       </div>

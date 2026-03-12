@@ -1,8 +1,7 @@
 "use client"
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { StatsCard } from '@/components/ui/StatsCard'
 import { EmployeeTable } from '@/components/karyawan/EmployeeTable'
 import { EmployeeDrawer } from '@/components/karyawan/EmployeeDrawer'
 import { 
@@ -13,22 +12,42 @@ import {
   Search, 
   FileDown,
   LayoutGrid,
-  List
+  List,
+  Loader2
 } from 'lucide-react'
-import { cn } from '@/lib/utils/cn'
-
-const mockEmployees = [
-  { id: '1', full_name: 'Andi Saputra', employee_code: 'EMP001', department: 'IT & Eng', position: 'Senior Dev', status: 'active' as const, join_date: '12 Jan 2022' },
-  { id: '2', full_name: 'Budi Hartanto', employee_code: 'EMP002', department: 'HRD', position: 'Manager', status: 'active' as const, join_date: '05 Feb 2021' },
-  { id: '3', full_name: 'Citra Kirana', employee_code: 'EMP003', department: 'Marketing', position: 'Senior Staff', status: 'active' as const, join_date: '10 Mar 2023' },
-  { id: '4', full_name: 'Dedi Mulyadi', employee_code: 'EMP004', department: 'Finance', position: 'Lead', status: 'inactive' as const, join_date: '15 Jul 2020' },
-  { id: '5', full_name: 'Eka Putri', employee_code: 'EMP005', department: 'Operations', position: 'Support', status: 'active' as const, join_date: '20 Aug 2023' },
-]
+import { useApi } from '@/hooks/useApi'
+import { useDebounce } from '@/hooks/useDebounce'
+import { formatNumber } from '@/lib/utils/format'
 
 export default function KaryawanPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selectedEmployee, setSelectedEmployee] = useState<any>(null)
   const [search, setSearch] = useState('')
+  const [deptFilter, setDeptFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  
+  const debouncedSearch = useDebounce(search, 500)
+
+  // Construct query params
+  const queryParams = new URLSearchParams()
+  if (debouncedSearch) queryParams.set('search', debouncedSearch)
+  if (deptFilter) queryParams.set('department_id', deptFilter)
+  if (statusFilter) queryParams.set('employment_status', statusFilter)
+  queryParams.set('limit', '100') // Fetch more for now
+
+  // API Hooks
+  const { data: employeesData, loading, refetch } = useApi<any>(`/api/employees?${queryParams.toString()}`)
+  const { data: depts } = useApi<any[]>('/api/departments')
+  const { data: positions } = useApi<any[]>('/api/positions')
+
+  const employees = employeesData?.data || []
+  
+  // Calculate stats from data (or you could have a separate summary API)
+  const stats = {
+    total: employees.length,
+    active: employees.filter((e: any) => e.employment_status === 'active').length,
+    inactive: employees.filter((e: any) => e.employment_status !== 'active').length,
+  }
 
   const handleEdit = (employee: any) => {
     setSelectedEmployee(employee)
@@ -40,9 +59,19 @@ export default function KaryawanPage() {
     setDrawerOpen(true)
   }
 
-  const handleDelete = (employee: any) => {
+  const handleDelete = async (employee: any) => {
     if (confirm(`Apakah Anda yakin ingin menghapus data ${employee.full_name}?`)) {
-      alert('Data akan dihapus.')
+      try {
+        const res = await fetch(`/api/employees/${employee.id}`, { method: 'DELETE' })
+        const json = await res.json()
+        if (json.success) {
+          refetch()
+        } else {
+          alert(json.error || 'Gagal menghapus data')
+        }
+      } catch (err) {
+        alert('Terjadi kesalahan sistem')
+      }
     }
   }
 
@@ -64,7 +93,7 @@ export default function KaryawanPage() {
         <div className="bg-white p-4 rounded-xl border flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Total Karyawan</p>
-            <p className="text-xl font-bold">1,248</p>
+            <p className="text-xl font-bold">{formatNumber(stats.total)}</p>
           </div>
           <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-lg flex items-center justify-center">
             <Users className="w-5 h-5" />
@@ -73,7 +102,7 @@ export default function KaryawanPage() {
         <div className="bg-white p-4 rounded-xl border flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Aktif</p>
-            <p className="text-xl font-bold text-green-600">1,230</p>
+            <p className="text-xl font-bold text-green-600">{formatNumber(stats.active)}</p>
           </div>
           <div className="w-10 h-10 bg-green-50 text-green-600 rounded-lg flex items-center justify-center">
             <UserCheck className="w-5 h-5" />
@@ -82,7 +111,7 @@ export default function KaryawanPage() {
         <div className="bg-white p-4 rounded-xl border flex items-center justify-between">
           <div>
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-1">Nonaktif / Resign</p>
-            <p className="text-xl font-bold text-red-600">18</p>
+            <p className="text-xl font-bold text-red-600">{formatNumber(stats.inactive)}</p>
           </div>
           <div className="w-10 h-10 bg-red-50 text-red-600 rounded-lg flex items-center justify-center">
             <UserMinus className="w-5 h-5" />
@@ -104,15 +133,25 @@ export default function KaryawanPage() {
         </div>
         
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <select className="flex-1 md:w-40 px-3 py-2 bg-muted/30 border-transparent rounded-lg text-sm outline-none focus:bg-white focus:border-primary transition-all">
+          <select 
+            value={deptFilter}
+            onChange={(e) => setDeptFilter(e.target.value)}
+            className="flex-1 md:w-48 px-3 py-2 bg-muted/30 border-transparent rounded-lg text-sm outline-none focus:bg-white focus:border-primary transition-all"
+          >
             <option value="">Semua Departemen</option>
-            <option value="it">IT & Eng</option>
-            <option value="hr">HRD</option>
+            {depts?.map((d: any) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
           </select>
-          <select className="flex-1 md:w-32 px-3 py-2 bg-muted/30 border-transparent rounded-lg text-sm outline-none focus:bg-white focus:border-primary transition-all">
+          <select 
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="flex-1 md:w-32 px-3 py-2 bg-muted/30 border-transparent rounded-lg text-sm outline-none focus:bg-white focus:border-primary transition-all"
+          >
             <option value="">Semua Status</option>
             <option value="active">Aktif</option>
             <option value="inactive">Nonaktif</option>
+            <option value="resign">Resign</option>
           </select>
           
           <div className="flex bg-muted p-1 rounded-lg shrink-0">
@@ -123,20 +162,37 @@ export default function KaryawanPage() {
       </div>
 
       {/* Data Table */}
-      <div className="w-full">
+      <div className="w-full relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-lg">
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          </div>
+        )}
         <EmployeeTable 
-          data={mockEmployees} 
+          data={employees.map((emp: any) => ({
+            id: emp.id,
+            full_name: emp.full_name,
+            employee_code: emp.employee_code,
+            department: emp.department?.name || '-',
+            position: emp.position?.name || '-',
+            status: emp.employment_status,
+            join_date: emp.hire_date ? new Date(emp.hire_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '-'
+          }))} 
           onEdit={handleEdit}
           onDelete={handleDelete}
         />
       </div>
 
-      <EmployeeDrawer 
-        isOpen={drawerOpen} 
-        onClose={() => setDrawerOpen(false)} 
-        onSuccess={() => alert('Data berhasil diproses')}
-        employee={selectedEmployee}
-      />
+      {drawerOpen && (
+        <EmployeeDrawer 
+          isOpen={drawerOpen} 
+          onClose={() => setDrawerOpen(false)} 
+          onSuccess={() => {
+            refetch()
+          }}
+          employee={selectedEmployee}
+        />
+      )}
     </div>
   )
 }

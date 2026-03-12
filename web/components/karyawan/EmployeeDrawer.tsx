@@ -1,8 +1,9 @@
 "use client"
 
-import React, { useState } from 'react'
-import { X, User, Briefcase, Lock, CheckCircle2, ChevronRight, ChevronLeft } from 'lucide-react'
+import React, { useState, useEffect } from 'react'
+import { X, User, Briefcase, Lock, CheckCircle2, ChevronRight, ChevronLeft, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils/cn'
+import { useApi } from '@/hooks/useApi'
 
 interface EmployeeDrawerProps {
   isOpen: boolean
@@ -15,15 +16,45 @@ export function EmployeeDrawer({ isOpen, onClose, onSuccess, employee }: Employe
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
-    full_name: employee?.full_name || '',
-    email: employee?.email || '',
-    phone: employee?.phone || '',
-    employee_code: employee?.employee_code || '',
-    department_id: employee?.department_id || '',
-    position_id: employee?.position_id || '',
-    join_date: employee?.join_date || '',
-    status: employee?.status || 'active',
+    full_name: '',
+    email: '',
+    phone: '',
+    employee_code: '',
+    department_id: '',
+    position_id: '',
+    hire_date: '',
+    employment_status: 'active',
   })
+
+  // Fetch departments and positions for the form
+  const { data: depts } = useApi<any[]>('/api/departments')
+  const { data: positions } = useApi<any[]>('/api/positions')
+
+  useEffect(() => {
+    if (employee) {
+      setFormData({
+        full_name: employee.full_name || '',
+        email: employee.email || '',
+        phone: employee.phone || '',
+        employee_code: employee.employee_code || '',
+        department_id: employee.department?.id || employee.department_id || '',
+        position_id: employee.position?.id || employee.position_id || '',
+        hire_date: employee.join_date ? new Date(employee.join_date).toISOString().split('T')[0] : '', // Note: using join_date from prop but hire_date in API
+        employment_status: employee.status || 'active',
+      })
+    } else {
+      setFormData({
+        full_name: '',
+        email: '',
+        phone: '',
+        employee_code: '',
+        department_id: '',
+        position_id: '',
+        hire_date: new Date().toISOString().split('T')[0],
+        employment_status: 'active',
+      })
+    }
+  }, [employee, isOpen])
 
   if (!isOpen) return null
 
@@ -38,12 +69,29 @@ export function EmployeeDrawer({ isOpen, onClose, onSuccess, employee }: Employe
 
   const handleSubmit = async () => {
     setLoading(true)
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const url = employee ? `/api/employees/${employee.id}` : '/api/employees'
+      const method = employee ? 'PATCH' : 'POST'
+      
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      })
+      
+      const result = await res.json()
+      
+      if (result.success) {
+        onSuccess()
+        onClose()
+      } else {
+        alert(result.error || 'Gagal menyimpan data')
+      }
+    } catch (err) {
+      alert('Terjadi kesalahan sistem')
+    } finally {
       setLoading(false)
-      onSuccess()
-      onClose()
-    }, 1500)
+    }
   }
 
   return (
@@ -106,7 +154,10 @@ export function EmployeeDrawer({ isOpen, onClose, onSuccess, employee }: Employe
                 <label className="text-sm font-semibold">Email Karyawan</label>
                 <input 
                   type="email" 
-                  className="w-full px-4 py-2 border rounded-lg focus:ring-4 focus:ring-primary/10 outline-none transition-all"
+                  value={formData.email}
+                  disabled={!!employee}
+                  onChange={(e) => setFormData({...formData, email: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg focus:ring-4 focus:ring-primary/10 outline-none transition-all disabled:bg-muted/50"
                   placeholder="andi@perusahaan.com"
                 />
               </div>
@@ -114,6 +165,8 @@ export function EmployeeDrawer({ isOpen, onClose, onSuccess, employee }: Employe
                 <label className="text-sm font-semibold">Nomor Telepon</label>
                 <input 
                   type="tel" 
+                  value={formData.phone}
+                  onChange={(e) => setFormData({...formData, phone: e.target.value})}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-4 focus:ring-primary/10 outline-none transition-all"
                   placeholder="0812xxxx"
                 />
@@ -127,31 +180,48 @@ export function EmployeeDrawer({ isOpen, onClose, onSuccess, employee }: Employe
                 <label className="text-sm font-semibold">Kode Karyawan</label>
                 <input 
                   type="text" 
+                  value={formData.employee_code}
+                  onChange={(e) => setFormData({...formData, employee_code: e.target.value})}
                   className="w-full px-4 py-2 border rounded-lg focus:ring-4 focus:ring-primary/10 outline-none transition-all"
-                  placeholder="EMP001"
+                  placeholder="Kosongkan untuk auto-generate"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4 text-left">
-                <div className="space-y-1.5">
+                <div className="space-y-1.5 text-left">
                   <label className="text-sm font-semibold">Departemen</label>
-                  <select className="w-full px-4 py-2 border rounded-lg bg-white outline-none">
+                  <select 
+                    value={formData.department_id}
+                    onChange={(e) => setFormData({...formData, department_id: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg bg-white outline-none"
+                  >
                     <option value="">Pilih...</option>
-                    <option value="it">IT & Engineering</option>
-                    <option value="hr">Human Resources</option>
+                    {depts?.map((d: any) => (
+                      <option key={d.id} value={d.id}>{d.name}</option>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1.5 text-left text-left">
                   <label className="text-sm font-semibold">Jabatan</label>
-                  <select className="w-full px-4 py-2 border rounded-lg bg-white outline-none">
+                  <select 
+                    value={formData.position_id}
+                    onChange={(e) => setFormData({...formData, position_id: e.target.value})}
+                    className="w-full px-4 py-2 border rounded-lg bg-white outline-none"
+                  >
                     <option value="">Pilih...</option>
-                    <option value="it">Manager</option>
-                    <option value="hr">Staff</option>
+                    {positions?.map((p: any) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
                   </select>
                 </div>
               </div>
               <div className="space-y-1.5 text-left">
                 <label className="text-sm font-semibold">Tanggal Bergabung</label>
-                <input type="date" className="w-full px-4 py-2 border rounded-lg outline-none" />
+                <input 
+                  type="date" 
+                  value={formData.hire_date}
+                  onChange={(e) => setFormData({...formData, hire_date: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg outline-none" 
+                />
               </div>
             </div>
           )}
@@ -161,15 +231,21 @@ export function EmployeeDrawer({ isOpen, onClose, onSuccess, employee }: Employe
               <div className="p-4 bg-primary/5 rounded-xl border border-primary/10 border-primary/10">
                 <p className="text-xs text-primary font-semibold mb-2">KEAMANAN AKUN</p>
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  Karyawan akan dikirimi email aktivasi untuk mengatur kata sandi mereka secara mandiri.
+                  {employee 
+                    ? 'Status akun karyawan saat ini.' 
+                    : 'Karyawan akan dikirimi email aktivasi untuk mengatur kata sandi mereka secara mandiri.'}
                 </p>
               </div>
               <div className="space-y-1.5 text-left">
-                <label className="text-sm font-semibold">Role Sistem</label>
-                <select className="w-full px-4 py-2 border rounded-lg bg-white outline-none">
-                  <option value="Employee">Karyawan</option>
-                  <option value="HR Manager">HR Manager</option>
-                  <option value="Admin">Administrator</option>
+                <label className="text-sm font-semibold">Status Kepegawaian</label>
+                <select 
+                  value={formData.employment_status}
+                  onChange={(e) => setFormData({...formData, employment_status: e.target.value})}
+                  className="w-full px-4 py-2 border rounded-lg bg-white outline-none"
+                >
+                  <option value="active">Aktif</option>
+                  <option value="inactive">Nonaktif</option>
+                  <option value="resign">Resign</option>
                 </select>
               </div>
             </div>
@@ -199,8 +275,9 @@ export function EmployeeDrawer({ isOpen, onClose, onSuccess, employee }: Employe
             <button 
               onClick={handleSubmit}
               disabled={loading}
-              className="btn-primary px-10 py-2.5 font-bold"
+              className="btn-primary px-10 py-2.5 font-bold flex items-center gap-2 min-w-[180px] justify-center"
             >
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
               {loading ? 'Menyimpan...' : (employee ? 'Simpan Perubahan' : 'Daftarkan Karyawan')}
             </button>
           )}

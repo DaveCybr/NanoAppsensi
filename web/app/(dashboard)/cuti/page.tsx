@@ -8,23 +8,72 @@ import {
   Plus, 
   Calendar, 
   Search, 
-  FileText,
-  Filter,
-  CheckCircle2,
   Clock,
-  BarChart2
+  CheckCircle2,
+  BarChart2,
+  Loader2
 } from 'lucide-react'
-import { cn } from '@/lib/utils/cn'
-
-const mockLeaves = [
-  { id: '1', employee_name: 'Hendra Wijaya', leave_type: 'Cuti Tahunan', start_date: '12 Mar 2024', end_date: '14 Mar 2024', days: 3, reason: 'Acara pernikahan adik kandung', status: 'pending' as const, submitted_at: '10 Mar 2024' },
-  { id: '2', employee_name: 'Indah Permata', leave_type: 'Cuti Tahunan', start_date: '18 Mar 2024', end_date: '20 Mar 2024', days: 3, reason: 'Urusan keluarga luar kota', status: 'approved' as const, submitted_at: '10 Mar 2024' },
-  { id: '3', employee_name: 'Joni Iskandar', leave_type: 'Sakit', start_date: '11 Mar 2024', end_date: '11 Mar 2024', days: 1, reason: 'Demam tinggi dan flu', status: 'rejected' as const, submitted_at: '11 Mar 2024' },
-  { id: '4', employee_name: 'Kania Putri', leave_type: 'Melahirkan', start_date: '20 Mar 2024', end_date: '20 Jun 2024', days: 90, reason: 'Izin melahirkan anak pertama', status: 'pending' as const, submitted_at: '05 Mar 2024' },
-]
+import { useApi } from '@/hooks/useApi'
+import { useDebounce } from '@/hooks/useDebounce'
+import { formatNumber, formatDate } from '@/lib/utils/format'
 
 export default function CutiPage() {
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  
+  const debouncedSearch = useDebounce(search, 500)
+
+  // Query params
+  const queryParams = new URLSearchParams()
+  if (statusFilter) queryParams.set('status', statusFilter)
+  queryParams.set('limit', '50')
+
+  const { data: leaveData, loading, refetch } = useApi<any>(`/api/leave/requests?${queryParams.toString()}`)
+  const rawLeaves = leaveData?.data || []
+  
+  // Filter search locally for now as API might not support it directly in LeaveQuerySchema 
+  // (Wait, LeaveQuerySchema doesn't have search, but route handler doesn't seem to use it either)
+  const leaves = rawLeaves.filter((l: any) => 
+    l.employee?.full_name?.toLowerCase().includes(debouncedSearch.toLowerCase())
+  )
+
+  const stats = {
+    pending: rawLeaves.filter((l: any) => l.status === 'pending').length,
+    approvedOfMonth: rawLeaves.filter((l: any) => l.status === 'approved').length, // Simplified
+    rate: "3.2%" 
+  }
+
+  const handleReview = async (id: string, action: 'approve' | 'reject') => {
+    let rejection_note = ''
+    if (action === 'reject') {
+      const note = prompt('Masukkan alasan penolakan (minimal 10 karakter):')
+      if (!note) return
+      if (note.length < 10) {
+        alert('Alasan penolakan terlalu pendek.')
+        return
+      }
+      rejection_note = note
+    } else {
+      if (!confirm('Apakah Anda yakin ingin menyetujui pengajuan cuti ini?')) return
+    }
+
+    try {
+      const res = await fetch(`/api/leave/requests/${id}/review`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, rejection_note })
+      })
+      const json = await res.json()
+      if (json.success) {
+        refetch()
+      } else {
+        alert(json.error || 'Gagal memproses pengajuan')
+      }
+    } catch (err) {
+      alert('Terjadi kesalahan sistem')
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -41,9 +90,9 @@ export default function CutiPage() {
           <div className="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center shrink-0">
             <Clock className="w-6 h-6" />
           </div>
-          <div className="text-left">
+          <div className="text-left text-left">
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Menunggu Persetujuan</p>
-            <p className="text-2xl font-extrabold">12 Permohonan</p>
+            <p className="text-2xl font-extrabold">{formatNumber(stats.pending)} Permohonan</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-2xl border shadow-sm flex items-center gap-4 text-left">
@@ -51,8 +100,8 @@ export default function CutiPage() {
             <CheckCircle2 className="w-6 h-6" />
           </div>
           <div>
-            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Disetujui (Bulan Ini)</p>
-            <p className="text-2xl font-extrabold">45 Karyawan</p>
+            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Disetujui</p>
+            <p className="text-2xl font-extrabold">{formatNumber(stats.approvedOfMonth)} Karyawan</p>
           </div>
         </div>
         <div className="bg-white p-6 rounded-2xl border shadow-sm flex items-center gap-4 text-left">
@@ -61,7 +110,7 @@ export default function CutiPage() {
           </div>
           <div>
             <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Tingkat Absensi Cuti</p>
-            <p className="text-2xl font-extrabold">3.2% <span className="text-xs text-green-600 font-bold ml-1">↓ 0.5%</span></p>
+            <p className="text-2xl font-extrabold">{stats.rate} <span className="text-xs text-green-600 font-bold ml-1">↓ 0.5%</span></p>
           </div>
         </div>
       </div>
@@ -74,14 +123,21 @@ export default function CutiPage() {
             type="text" 
             placeholder="Cari nama karyawan..." 
             className="w-full pl-10 pr-4 py-2 bg-muted/30 border-transparent focus:bg-white focus:border-primary focus:ring-4 focus:ring-primary/10 rounded-lg text-sm transition-all outline-none"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
           />
         </div>
         
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <select className="flex-1 md:w-40 px-3 py-2 bg-muted/30 border-transparent rounded-lg text-sm outline-none focus:bg-white transition-all appearance-none cursor-pointer">
+          <select 
+            className="flex-1 md:w-40 px-3 py-2 bg-muted/30 border-transparent rounded-lg text-sm outline-none focus:bg-white transition-all appearance-none cursor-pointer"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
             <option value="">Semua Status</option>
             <option value="pending">Pending</option>
             <option value="approved">Disetujui</option>
+            <option value="rejected">Ditolak</option>
           </select>
           <div className="relative">
             <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -94,19 +150,36 @@ export default function CutiPage() {
       </div>
 
       {/* Table Content */}
-      <div className="w-full">
+      <div className="w-full relative">
+        {loading && (
+          <div className="absolute inset-0 bg-white/50 backdrop-blur-[1px] z-10 flex items-center justify-center rounded-lg">
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+          </div>
+        )}
         <LeaveTable 
-          data={mockLeaves}
-          onApprove={() => alert('Cuti disetujui')}
-          onReject={() => alert('Cuti ditolak')}
-          onView={() => alert('Membuka detail')}
+          data={leaves.map((l: any) => ({
+            id: l.id,
+            employee_name: l.employee?.full_name || 'Unknown',
+            leave_type: l.leave_type?.name || '-',
+            start_date: formatDate(l.start_date, 'short'),
+            end_date: formatDate(l.end_date, 'short'),
+            days: l.total_days,
+            reason: l.reason,
+            status: l.status,
+            submitted_at: formatDate(l.created_at, 'short')
+          }))}
+          onApprove={(record) => handleReview(record.id, 'approve')}
+          onReject={(record) => handleReview(record.id, 'reject')}
+          onView={() => alert('Fitur detail sedang dikembangkan')}
         />
       </div>
 
       <LeaveDrawer 
         isOpen={drawerOpen} 
         onClose={() => setDrawerOpen(false)} 
-        onSuccess={() => alert('Pengajuan berhasil dikirim')} 
+        onSuccess={() => {
+          refetch()
+        }} 
       />
     </div>
   )

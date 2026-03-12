@@ -2,8 +2,45 @@ import { NextRequest } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireAuth, isHrOrAdmin } from '@/lib/utils/auth'
 import { writeAuditLog } from '@/lib/utils/audit'
-import { created, badRequest, notFound, conflict, forbidden, serverError } from '@/lib/utils/response'
+import { ok, created, badRequest, notFound, conflict, forbidden, serverError } from '@/lib/utils/response'
 import { CorrectionSchema } from '@/lib/validations/attendance'
+
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await requireAuth(request)
+    if (!auth.ok) return auth.response
+    const { user } = auth
+
+    const url = new URL(request.url)
+    const status = url.searchParams.get('status')
+
+    const admin = createAdminClient()
+    let query = admin
+      .from('attendance_corrections')
+      .select(`
+        *,
+        employee:employees(id, full_name, employee_code),
+        attendance:attendances(attendance_date, check_in, check_out, status:attendance_status(name)),
+        after_status:attendance_status!after_status_id(name)
+      `)
+      .eq('tenant_id', user.tenant_id)
+
+    if (!isHrOrAdmin(user)) {
+      query = query.eq('employee_id', user.employee_id)
+    }
+
+    if (status) {
+      query = query.eq('status', status)
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false })
+    if (error) throw error
+
+    return ok(data ?? [])
+  } catch (error) {
+    return serverError(error)
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {

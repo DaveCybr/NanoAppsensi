@@ -1,3 +1,6 @@
+import { formatDistanceToNow } from 'date-fns'
+import { id } from 'date-fns/locale'
+
 /**
  * Utilitas untuk formatting data (Tanggal, Mata Uang, Durasi)
  * Menggunakan locale id-ID (Bahasa Indonesia)
@@ -29,9 +32,22 @@ export const formatDate = (date: string | Date | null | undefined, format: 'full
   }).format(d)
 }
 
+export const formatRelative = (date: string | Date | null | undefined) => {
+  if (!date) return '-'
+  return formatDistanceToNow(new Date(date), { addSuffix: true, locale: id })
+}
+
 export const formatTime = (time: string | null | undefined) => {
   if (!time) return '-'
-  // Handle HH:mm:ss or HH:mm
+  // Handle HH:mm:ss or HH:mm or ISO string
+  if (time.includes('T')) {
+    const d = new Date(time)
+    return new Intl.DateTimeFormat('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    }).format(d) + ' WIB'
+  }
   const parts = time.split(':')
   if (parts.length < 2) return time
   return `${parts[0]}:${parts[1]} WIB`
