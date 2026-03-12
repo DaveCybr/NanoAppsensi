@@ -24,6 +24,8 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
     if (!auth.ok) return auth.response
     const { user } = auth
 
+    console.log(`[API GET Employee] ID: ${params.id}, Tenant: ${user.tenant_id}`)
+
     const admin = createAdminClient()
 
     const { data, error } = await admin
@@ -39,9 +41,9 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
         work_location:work_locations(id, name, address),
         manager:employees!employees_manager_id_fkey(id, full_name, employee_code),
         user:users!employees_user_id_fkey(id, email, last_login, is_active),
-        employee_shifts(
+        employee_shifts!employee_shifts_employee_id_fkey(
           id, start_date, end_date,
-          shift:shifts(id, name, start_time, end_time)
+          shift:shifts!employee_shifts_shift_id_fkey(id, name, start_time, end_time)
         )
       `)
       .eq('id', params.id)
@@ -49,7 +51,17 @@ export async function GET(request: NextRequest, { params }: RouteContext) {
       .is('deleted_at', null)
       .single()
 
-    if (error || !data) return notFound('Karyawan')
+    if (error) {
+      console.error('[API GET Employee Error]', error)
+      return serverError(error)
+    }
+    
+    if (!data) {
+      console.warn('[API GET Employee Not Found] No record match.')
+      return notFound('Karyawan')
+    }
+
+    console.log('[API GET Employee Success] Found:', data.full_name)
 
     // Ambil shift yang saat ini (yang terbaru atau yang tidak punya end_date)
     const activeShift = (data.employee_shifts as any[])?.sort((a, b) => 
