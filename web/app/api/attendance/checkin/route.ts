@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server'
-import { parse } from 'date-fns'
 import { toZonedTime, format, fromZonedTime } from 'date-fns-tz'
 import { createAdminClient } from '@/lib/supabase/server'
 import { requireAuth, getClientIp } from '@/lib/utils/auth'
@@ -127,9 +126,12 @@ export async function POST(request: NextRequest) {
       // today is already 'yyyy-MM-dd' in tenant timezone
       const shiftTimeStr = `${today} ${shift.start_time}`
       
-      const shiftStartLocal = parse(shiftTimeStr, 'yyyy-MM-dd HH:mm:ss', new Date())
+      // parse manual tanpa date-fns parse()
+      const [datePart, timePart] = shiftTimeStr.split(' ')
+      const [year, month, day] = datePart.split('-').map(Number)
+      const [hour, minute, second] = timePart.split(':').map(Number)
+      const shiftStartLocal = new Date(year, month - 1, day, hour, minute, second ?? 0)
       const shiftStart = fromZonedTime(shiftStartLocal, timezone)
-
       const diffMinutes = Math.floor((now.getTime() - shiftStart.getTime()) / 60000)
       const tolerance = shift.late_tolerance_minutes ?? 15
       
