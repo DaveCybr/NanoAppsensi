@@ -1,52 +1,77 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import type { MeResponse, AuthUser } from '@/types/api'
 
-export type User = {
+export type { AuthUser }
+
+export type TenantInfo = {
   id: string
-  email: string
-  full_name: string | null
-  tenant_id: string
-  role_name: string | null
-  employee_id: string | null
-  is_active: boolean
+  name: string
+  slug: string
+  logo_url: string | null
+  timezone: string
+  subscription_plan: string
 }
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [user, setUser]               = useState<AuthUser | null>(null)
+  const [tenant, setTenant]           = useState<TenantInfo | null>(null)
+  const [permissions, setPermissions] = useState<string[]>([])
+  const [loading, setLoading]         = useState(true)
   const router = useRouter()
 
-  useEffect(() => {
-    async function checkAuth() {
-      try {
-        const res = await fetch('/api/auth/me') // Assuming there is a /me endpoint or similar
-        const json = await res.json()
-        
-        if (json.success) {
-          setUser(json.data)
-        } else {
-          setUser(null)
-          // Don't redirect here, let the layout handle it or specific pages
-        }
-      } catch (err) {
-        setUser(null)
-      } finally {
-        setLoading(false)
-      }
-    }
+  const checkAuth = useCallback(async () => {
+    try {
+      const res  = await fetch('/api/auth/me')
+      const json = await res.json()
 
-    checkAuth()
+      if (json.success && json.data?.user) {
+        // ✅ FIX: me/route.ts returns { data: { user, tenant, permissions } }
+        const meData: MeResponse = json.data
+        setUser(meData.user)
+        setTenant(meData.tenant)
+        setPermissions(meData.permissions ?? [])
+      } else {
+        setUser(null)
+        setTenant(null)
+        setPermissions([])
+      }
+    } catch {
+      setUser(null)
+      setTenant(null)
+      setPermissions([])
+    } finally {
+      setLoading(false)
+    }
   }, [])
+
+  useEffect(() => {
+    checkAuth()
+  }, [checkAuth])
 
   const logout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' })
+    } catch {
+      // tetap logout meski request gagal
+    } finally {
       setUser(null)
+      setTenant(null)
+      setPermissions([])
       router.push('/login')
-    } catch (err) {
-      console.error('Logout failed', err)
     }
   }
 
-  return { user, loading, logout, isAuthenticated: !!user }
+  return {
+    user,
+    tenant,
+    permissions,
+    loading,
+    logout,
+    refetch: checkAuth,
+    isAuthenticated: !!user,
+    isAdmin:      user?.role_name === 'Admin',
+    isHrOrAdmin:  user?.role_name === 'Admin' || user?.role_name === 'HR Manager',
+    hasPermission: (code: string) => permissions.includes(code),
+  }
 }
