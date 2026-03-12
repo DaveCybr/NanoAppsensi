@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
         overtime_hours, is_manual, check_in_is_valid_location, check_out_is_valid_location,
         check_in_face_confidence, check_out_face_confidence,
         status:attendance_status(code, name, color),
-        employee:employees(
+        employee:employees!attendances_employee_id_fkey(
           id, full_name, employee_code,
           department:departments(name),
           position:positions(name)

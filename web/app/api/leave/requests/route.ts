@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
         id, start_date, end_date, total_days, status, reason, attachment_url, 
         approved_at, rejection_note, created_at,
         leave_type:leave_types(id, name, is_paid),
-        employee:employees(id, full_name, employee_code, department:departments(name)),
+        employee:employees!leave_requests_employee_id_fkey(id, full_name, employee_code, department:departments(name)),
         approver:employees!leave_requests_approved_by_fkey(id, full_name)
       `, { count: 'exact' })
       .eq('tenant_id', user.tenant_id)

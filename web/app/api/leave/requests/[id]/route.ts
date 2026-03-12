@@ -22,7 +22,7 @@ export async function GET(request: NextRequest, { params }: Props) {
       .select(`
         *,
         leave_type:leave_types(id, name, is_paid),
-        employee:employees(id, full_name, employee_code, department:departments(name)),
+        employee:employees!leave_requests_employee_id_fkey(id, full_name, employee_code, department:departments(name)),
         approver:employees!leave_requests_approved_by_fkey(id, full_name)
       `)
       .eq('id', params.id)

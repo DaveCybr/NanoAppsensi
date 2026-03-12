@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
       .from('attendance_corrections')
       .select(`
         *,
-        employee:employees(id, full_name, employee_code),
+        employee:employees!attendance_corrections_employee_id_fkey(id, full_name, employee_code),
         attendance:attendances(attendance_date, check_in, check_out, status:attendance_status(name)),
         after_status:attendance_status!after_status_id(name)
       `)
