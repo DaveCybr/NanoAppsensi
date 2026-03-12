@@ -1,4 +1,4 @@
-# TEFA Presensi — Admin Panel
+# NANO HRIS — Admin Panel
 
 Admin panel untuk sistem manajemen kehadiran PT Nano Indonesia Sakti.
 
@@ -36,15 +36,15 @@ npm run build
 
 ## Halaman yang sudah diimplementasi
 
-| Route | Halaman | Status |
-|-------|---------|--------|
-| `/summary-report` | Summary Report (absensi harian + stats + chart) | ✅ Done |
-| `/location-map` | Location Map (realtime GPS markers) | ✅ Done |
-| `/issue-attendance` | Issue Attendance (log masuk/keluar) | ✅ Done |
-| `/employee` | Employee List + Management | ✅ Done |
-| `/hierarchy` | Hierarchy (Position, Grade, Employment Status) | ✅ Done |
-| `/zones` | Zones / Work Location + peta | ✅ Done |
-| `/company` | Company Settings | ✅ Done |
+| Route               | Halaman                                         | Status  |
+| ------------------- | ----------------------------------------------- | ------- |
+| `/summary-report`   | Summary Report (absensi harian + stats + chart) | ✅ Done |
+| `/location-map`     | Location Map (realtime GPS markers)             | ✅ Done |
+| `/issue-attendance` | Issue Attendance (log masuk/keluar)             | ✅ Done |
+| `/employee`         | Employee List + Management                      | ✅ Done |
+| `/hierarchy`        | Hierarchy (Position, Grade, Employment Status)  | ✅ Done |
+| `/zones`            | Zones / Work Location + peta                    | ✅ Done |
+| `/company`          | Company Settings                                | ✅ Done |
 
 ## Integrasi Supabase
 
@@ -56,19 +56,21 @@ VITE_SUPABASE_ANON_KEY=your-anon-key
 ```
 
 Kemudian install Supabase client:
+
 ```bash
 npm install @supabase/supabase-js
 ```
 
 Dan buat file `src/lib/supabase.ts`:
+
 ```ts
-import { createClient } from '@supabase/supabase-js'
-import type { Database } from '../types/database.types'
+import { createClient } from "@supabase/supabase-js";
+import type { Database } from "../types/database.types";
 
 export const supabase = createClient<Database>(
   import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-)
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+);
 ```
 
 ## Struktur Folder
