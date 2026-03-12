@@ -32,6 +32,12 @@
   --color-info: hsl(var(--info));
   
   --color-ring: hsl(var(--ring));
+
+  /* ← TAMBAHKAN INI */
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
   
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -73,6 +79,11 @@
 
     --ring: 221 83% 53%;
 
+    --sidebar: 222 47% 11%;
+    --sidebar-foreground: 210 40% 98%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
     --radius: 0.5rem;
 
     --font-jakarta: 'Plus Jakarta Sans', sans-serif;
@@ -93,6 +104,11 @@
     --primary-foreground: 0 0% 100%;
 
     --ring: 224 71% 45%;
+
+    --sidebar: 222 47% 11%;
+    --sidebar-foreground: 210 40% 98%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
   }
 }
 
