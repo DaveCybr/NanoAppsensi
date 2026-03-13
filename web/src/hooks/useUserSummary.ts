@@ -5,6 +5,7 @@ import {
 } from '../lib/userSummaryService'
 import { getReportFilterOptions, type DepartmentOption, type EmployeeOption } from '../lib/summaryReportService'
 import { useAuthStore } from '../stores/authStore'
+import { hasValidSession } from '../lib/sessionGuard'
 
 function today() { return new Date().toISOString().slice(0, 10) }
 
@@ -35,6 +36,8 @@ export function useUserSummary() {
 
   const load = useCallback(async (f: UserSummaryFilters) => {
     if (!tenantId) return
+    const valid = await hasValidSession()
+    if (!valid) return
     setIsLoading(true); setError(null)
     const { data, count, error } = await getUserSummaryRows(tenantId, f)
     if (error) setError(error)

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
+import { supabase } from "../../lib/supabase";
 
 export default function RequireAuth({
   children,
@@ -15,6 +16,7 @@ export default function RequireAuth({
   const location = useLocation();
   const initCalledRef = useRef(false);
 
+  // Initial boot
   useEffect(() => {
     if (!initCalledRef.current && !isInitialized) {
       initCalledRef.current = true;
@@ -22,6 +24,28 @@ export default function RequireAuth({
       initialize();
     }
   }, [isInitialized, initialize]);
+
+  // Re-check session when tab becomes visible after idle
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState !== "visible") return;
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const currentUser = useAuthStore.getState().user;
+
+      if (!session || !currentUser) {
+        // Session expired or state lost — clear stuck spinners then re-hydrate
+        useAuthStore.getState().resetLoadingState();
+        initialize();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [initialize]);
 
   console.log("[RequireAuth] Render:", {
     isInitialized,

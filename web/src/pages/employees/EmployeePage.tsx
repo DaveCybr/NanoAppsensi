@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { UserPlus, Download, RefreshCw, Edit, Trash2, AlertCircle, Loader2, Search } from 'lucide-react'
 import { useEmployeeList, useEmployeeMutations } from '../../hooks/useEmployee'
-import type { EmployeeWithRelations } from '../../types/database.types'
+import type { EmployeeWithRelations } from '../../lib/employeeService'
 import type { EmployeeFormData } from '../../lib/employeeService'
 import EmployeeModal from './EmployeeModal'
 import clsx from 'clsx'

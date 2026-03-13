@@ -36,13 +36,14 @@ export async function getLeaveRequests(
     .select(`
       id,
       employee_id,
-      leave_type,
+      leave_type_id,
       start_date,
       end_date,
       reason,
       status,
       created_at,
-      employees ( id, full_name )
+      employees ( id, full_name ),
+      leave_types ( name )
     `, { count: 'exact' })
     .eq('tenant_id', tenantId)
     .order('created_at', { ascending: false })
@@ -64,7 +65,7 @@ export async function getLeaveRequests(
       id:           row.id,
       employee_id:  row.employee_id,
       employeeName: row.employees?.full_name ?? 'Unknown',
-      leave_type:   row.leave_type ?? '—',
+      leave_type:   row.leave_types?.name ?? '—',
       start_date:   row.start_date ? format(new Date(row.start_date), 'dd MMM yyyy') : '—',
       end_date:     row.end_date   ? format(new Date(row.end_date),   'dd MMM yyyy') : '—',
       duration,

@@ -5,7 +5,8 @@ import {
   getDepartments, getPositions, getWorkLocations, getManagers,
   type EmployeeFilters, type EmployeeFormData,
 } from '../lib/employeeService'
-import type { EmployeeWithRelations } from '../types/database.types'
+import { supabase } from '../lib/supabase'
+import type { EmployeeWithRelations } from '../lib/employeeService'
 import { useAuthStore } from '../stores/authStore'
 
 // ─── useEmployeeList ──────────────────────────────────────────────────────────
@@ -116,6 +117,7 @@ export function useEmployeeFormData() {
   const [positions,      setPositions]      = useState<{ id: string; name: string }[]>([])
   const [workLocations,  setWorkLocations]  = useState<{ id: string; name: string }[]>([])
   const [managers,       setManagers]       = useState<{ id: string; full_name: string }[]>([])
+  const [groups,         setGroups]         = useState<{ id: string; name: string }[]>([])
   const [isLoading,      setIsLoading]      = useState(false)
   const fetchedRef = useRef(false)
 
@@ -128,14 +130,21 @@ export function useEmployeeFormData() {
       getPositions(tenantId),
       getWorkLocations(tenantId),
       getManagers(tenantId),
-    ]).then(([d, p, w, m]) => {
+      supabase
+        .from('groups')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .is('deleted_at', null)
+        .order('name'),
+    ]).then(([d, p, w, m, g]) => {
       setDepartments(d.data)
       setPositions(p.data)
       setWorkLocations(w.data)
       setManagers(m.data)
+      setGroups(g.data ?? [])
       setIsLoading(false)
     })
   }, [tenantId])
 
-  return { departments, positions, workLocations, managers, isLoading }
+  return { departments, positions, workLocations, managers, groups, isLoading }
 }

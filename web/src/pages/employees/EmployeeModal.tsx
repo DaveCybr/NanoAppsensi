@@ -7,7 +7,7 @@ import {
   Briefcase,
   CreditCard,
 } from "lucide-react";
-import type { EmployeeWithRelations } from "../../types/database.types";
+import type { EmployeeWithRelations } from "../../lib/employeeService";
 import type { EmployeeFormData } from "../../lib/employeeService";
 import { useEmployeeFormData } from "../../hooks/useEmployee";
 import { updateAuthUserPassword } from "../../lib/adminAuthService";
@@ -33,6 +33,7 @@ const EMPTY_FORM: EmployeeFormData = {
   department_id: "",
   position_id: "",
   work_location_id: "",
+  group_id: "",
   employment_status: "active",
   hire_date: "",
   manager_id: "",
@@ -60,7 +61,7 @@ export default function EmployeeModal({
   const [form, setForm] = useState<EmployeeFormData>(EMPTY_FORM);
   const [isResettingPwd, setIsResettingPwd] = useState(false);
   const [resetPwdSuccess, setResetPwdSuccess] = useState(false);
-  const { departments, positions, workLocations, managers } =
+  const { departments, positions, workLocations, managers, groups } =
     useEmployeeFormData();
 
   // Prefill form in edit mode
@@ -78,6 +79,7 @@ export default function EmployeeModal({
         department_id: employee.department_id ?? "",
         position_id: employee.position_id ?? "",
         work_location_id: employee.work_location_id ?? "",
+        group_id: (employee as any).group_id ?? "",
         employment_status: employee.employment_status ?? "active",
         hire_date: employee.hire_date ?? "",
         manager_id: employee.manager_id ?? "",
@@ -324,6 +326,23 @@ export default function EmployeeModal({
                   {workLocations.map((w) => (
                     <option key={w.id} value={w.id}>
                       {w.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Group
+                </label>
+                <select
+                  value={form.group_id ?? ""}
+                  onChange={(e) => set("group_id", e.target.value)}
+                  className="select text-sm"
+                >
+                  <option value="">Tidak ada group</option>
+                  {groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
                     </option>
                   ))}
                 </select>

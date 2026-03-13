@@ -7,6 +7,7 @@ import {
   type DepartmentOption, type EmployeeOption,
 } from '../lib/summaryReportService'
 import { useAuthStore } from '../stores/authStore'
+import { hasValidSession } from '../lib/sessionGuard'
 
 // ── today string ──────────────────────────────────────────────────────────────
 function today() {
@@ -60,6 +61,8 @@ export function useSummaryReport() {
   // ── Load table rows ────────────────────────────────────────────────────────
   const loadRows = useCallback(async (f: AttendanceFilters) => {
     if (!tenantId) return
+    const valid = await hasValidSession()
+    if (!valid) return
     setIsLoadingRows(true)
     setError(null)
     const { data, count, error } = await getAttendanceReport(tenantId, f)

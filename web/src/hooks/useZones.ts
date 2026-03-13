@@ -4,6 +4,7 @@ import {
   type ZoneRow, type ZoneFormData,
 } from '../lib/zonesService'
 import { useAuthStore } from '../stores/authStore'
+import { hasValidSession } from '../lib/sessionGuard'
 
 export function useZones() {
   const tenantId = useAuthStore(s => s.tenant?.id)
@@ -16,6 +17,8 @@ export function useZones() {
 
   const load = useCallback(async () => {
     if (!tenantId) return
+    const valid = await hasValidSession()
+    if (!valid) return
     setIsLoading(true)
     setError(null)
     const { data, error } = await getZones(tenantId)

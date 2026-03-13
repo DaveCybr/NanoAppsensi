@@ -29,6 +29,7 @@ interface AuthState {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   clearError: () => void;
+  resetLoadingState: () => void;
 }
 
 // ─── Store ────────────────────────────────────────────────────────────────────
@@ -136,16 +137,21 @@ export const useAuthStore = create<AuthState>()(
                   roleName: null,
                 });
               }
-            } else if (event === "SIGNED_OUT") {
+            } else if (event === "TOKEN_REFRESHED" && session) {
+              set({ session, user: session.user });
+            } else if (
+              event === "SIGNED_OUT" ||
+              (!session && (event as string) === "TOKEN_REFRESH_FAILED")
+            ) {
               set({
                 user: null,
                 session: null,
                 profile: null,
                 tenant: null,
                 roleName: null,
+                isInitialized: true,
+                isLoading: false,
               });
-            } else if (event === "TOKEN_REFRESHED" && session) {
-              set({ session });
             }
           });
         }
@@ -221,6 +227,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       clearError: () => set({ error: null }),
+      resetLoadingState: () => set({ isLoading: false }),
     }),
     {
       name: "tefa-auth",

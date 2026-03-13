@@ -1,10 +1,21 @@
 import { supabase } from "../lib/supabase";
 import type {
-  EmployeeWithRelations,
-  InsertDto,
-  UpdateDto,
+  Tables,
+  TablesInsert,
+  TablesUpdate,
 } from "../types/database.types";
-import { createAuthUser } from "./adminAuthService"; // ← tambahkan import ini di atas file
+import { createAuthUser } from "./adminAuthService";
+
+// ─── Extended employee type with joined relations ──────────────────────────────
+export type EmployeeWithRelations = Tables<"employees"> & {
+  departments:    { id: string; name: string } | null;
+  positions:      { id: string; name: string } | null;
+  work_locations: { id: string; name: string } | null;
+  users:          { id: string; email: string; is_active: boolean } | null;
+};
+
+type EmployeeInsert = TablesInsert<"employees">;
+type EmployeeUpdate = TablesUpdate<"employees">;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type EmployeeFilters = {
@@ -36,6 +47,7 @@ export type EmployeeFormData = {
   department_id: string;
   position_id: string;
   work_location_id: string;
+  group_id?: string;
   employment_status: string;
   hire_date: string;
   manager_id: string;
@@ -173,7 +185,7 @@ export async function createEmployee(
   }
 
   // ── 3. Insert employee record ──────────────────────────────────────────────
-  const payload: InsertDto<"employees"> = {
+  const payload: EmployeeInsert = {
     tenant_id: tenantId,
     user_id: userId,
     full_name: form.full_name,
@@ -187,6 +199,7 @@ export async function createEmployee(
     department_id: form.department_id || null,
     position_id: form.position_id || null,
     work_location_id: form.work_location_id || null,
+    group_id: form.group_id || null,
     employment_status: form.employment_status || null,
     hire_date: form.hire_date || null,
     manager_id: form.manager_id || null,
@@ -215,7 +228,7 @@ export async function updateEmployee(
   id: string,
   updates: Partial<EmployeeFormData>,
 ): Promise<{ data: EmployeeWithRelations | null; error: string | null }> {
-  const payload: UpdateDto<"employees"> = {
+  const payload: EmployeeUpdate = {
     full_name: updates.full_name,
     employee_code: updates.employee_code || null,
     birth_date: updates.birth_date || null,
@@ -227,6 +240,7 @@ export async function updateEmployee(
     department_id: updates.department_id || null,
     position_id: updates.position_id || null,
     work_location_id: updates.work_location_id || null,
+    group_id: updates.group_id !== undefined ? updates.group_id || null : undefined,
     employment_status: updates.employment_status || null,
     hire_date: updates.hire_date || null,
     manager_id: updates.manager_id || null,
