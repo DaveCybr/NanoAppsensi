@@ -1,483 +1,657 @@
-import { useState } from 'react'
-import { Plus, Edit, Trash2 } from 'lucide-react'
-import clsx from 'clsx'
+// web/src/pages/hierarchy/HierarchyPage.tsx
+// Schema aktual:
+//   positions:           id, tenant_id, name, description
+//   employment_statuses: id, tenant_id, code, name
+//   grades:              id, tenant_id, code, name
+
+import { useState, useEffect, useCallback } from "react";
 import {
-  usePositionList, usePositionMutations,
-  useGradeList, useGradeMutations,
-  useEmploymentStatusList, useEmploymentStatusMutations,
-} from '../../hooks/useHierarchy'
-import type { PositionRow, GradeRow, EmploymentStatusRow } from '../../lib/hierarchyService'
+  Plus,
+  Pencil,
+  Trash2,
+  X,
+  Loader2,
+  AlertCircle,
+  Search,
+  CheckCircle2,
+} from "lucide-react";
+import { supabase } from "../../lib/supabase";
+import { useAuthStore } from "../../stores/authStore";
+import clsx from "clsx";
 
-type Tab = 'position' | 'grade' | 'employment'
+// ─── Types ────────────────────────────────────────────────────────────────────
 
-export default function HierarchyPage() {
-  const [activeTab, setActiveTab] = useState<Tab>('position')
+type Position = {
+  id: string;
+  name: string;
+  description: string | null;
+};
 
-  // ── Position state ──
-  const [posSearch, setPosSearch] = useState('')
-  const [posModal, setPosModal] = useState(false)
-  const [posEdit, setPosEdit] = useState<PositionRow | null>(null)
-  const [posName, setPosName] = useState('')
-  const [posConfirmId, setPosConfirmId] = useState<string | null>(null)
+type EmpStatus = {
+  id: string;
+  code: string;
+  name: string;
+};
 
-  // ── Grade state ──
-  const [gradeSearch, setGradeSearch] = useState('')
-  const [gradeModal, setGradeModal] = useState(false)
-  const [gradeEdit, setGradeEdit] = useState<GradeRow | null>(null)
-  const [gradeCode, setGradeCode] = useState('')
-  const [gradeName, setGradeName] = useState('')
-  const [gradeConfirmId, setGradeConfirmId] = useState<string | null>(null)
+type Grade = {
+  id: string;
+  code: string;
+  name: string;
+};
 
-  // ── Employment Status state ──
-  const [empSearch, setEmpSearch] = useState('')
-  const [empModal, setEmpModal] = useState(false)
-  const [empEdit, setEmpEdit] = useState<EmploymentStatusRow | null>(null)
-  const [empCode, setEmpCode] = useState('')
-  const [empName, setEmpName] = useState('')
-  const [empConfirmId, setEmpConfirmId] = useState<string | null>(null)
+type Tab = "position" | "employment_status" | "grade";
 
-  // ── Hooks ──
-  const { positions, isLoading: posLoading, error: posError, refetch: posRefetch } = usePositionList()
-  const posMutations = usePositionMutations(posRefetch)
+// ─── Modals ───────────────────────────────────────────────────────────────────
 
-  const { grades, isLoading: gradeLoading, error: gradeError, refetch: gradeRefetch } = useGradeList()
-  const gradeMutations = useGradeMutations(gradeRefetch)
+function PositionModal({
+  item,
+  tenantId,
+  onClose,
+  onSaved,
+}: {
+  item: Position | null;
+  tenantId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(item?.name ?? "");
+  const [desc, setDesc] = useState(item?.description ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const { statuses, isLoading: empLoading, error: empError, refetch: empRefetch } = useEmploymentStatusList()
-  const empMutations = useEmploymentStatusMutations(empRefetch)
-
-  // ── Position handlers ──
-  const openPosAdd = () => { setPosEdit(null); setPosName(''); setPosModal(true) }
-  const openPosEdit = (p: PositionRow) => { setPosEdit(p); setPosName(p.name); setPosModal(true) }
-  const handlePosSave = async () => {
-    if (!posName.trim()) return
-    if (posEdit) await posMutations.update(posEdit.id, posName.trim())
-    else await posMutations.create(posName.trim())
-    setPosModal(false)
-  }
-  const handlePosDelete = async (id: string) => {
-    await posMutations.remove(id)
-    setPosConfirmId(null)
-  }
-
-  // ── Grade handlers ──
-  const openGradeAdd = () => { setGradeEdit(null); setGradeCode(''); setGradeName(''); setGradeModal(true) }
-  const openGradeEdit = (g: GradeRow) => { setGradeEdit(g); setGradeCode(g.code); setGradeName(g.name); setGradeModal(true) }
-  const handleGradeSave = async () => {
-    if (!gradeCode.trim() || !gradeName.trim()) return
-    if (gradeEdit) await gradeMutations.update(gradeEdit.id, gradeCode.trim(), gradeName.trim())
-    else await gradeMutations.create(gradeCode.trim(), gradeName.trim())
-    setGradeModal(false)
-  }
-  const handleGradeDelete = async (id: string) => {
-    await gradeMutations.remove(id)
-    setGradeConfirmId(null)
-  }
-
-  // ── Employment Status handlers ──
-  const openEmpAdd = () => { setEmpEdit(null); setEmpCode(''); setEmpName(''); setEmpModal(true) }
-  const openEmpEdit = (s: EmploymentStatusRow) => { setEmpEdit(s); setEmpCode(s.code); setEmpName(s.name); setEmpModal(true) }
-  const handleEmpSave = async () => {
-    if (!empCode.trim() || !empName.trim()) return
-    if (empEdit) await empMutations.update(empEdit.id, empCode.trim(), empName.trim())
-    else await empMutations.create(empCode.trim(), empName.trim())
-    setEmpModal(false)
-  }
-  const handleEmpDelete = async (id: string) => {
-    await empMutations.remove(id)
-    setEmpConfirmId(null)
-  }
-
-  const filteredPositions = positions.filter(p =>
-    p.name.toLowerCase().includes(posSearch.toLowerCase())
-  )
-  const filteredGrades = grades.filter(g =>
-    g.name.toLowerCase().includes(gradeSearch.toLowerCase()) ||
-    g.code.toLowerCase().includes(gradeSearch.toLowerCase())
-  )
-  const filteredStatuses = statuses.filter(s =>
-    s.name.toLowerCase().includes(empSearch.toLowerCase()) ||
-    s.code.toLowerCase().includes(empSearch.toLowerCase())
-  )
-
-  const tabs: { key: Tab; label: string }[] = [
-    { key: 'position',   label: 'Position' },
-    { key: 'grade',      label: 'Grade' },
-    { key: 'employment', label: 'Employment Status' },
-  ]
+  const handleSave = async () => {
+    if (!name.trim()) return setError("Position Name wajib diisi");
+    setSaving(true);
+    setError(null);
+    const payload = { name, description: desc || null, tenant_id: tenantId };
+    const { error } = item
+      ? await supabase.from("positions").update(payload).eq("id", item.id)
+      : await supabase.from("positions").insert(payload);
+    setSaving(false);
+    if (error) return setError(error.message);
+    onSaved();
+    onClose();
+  };
 
   return (
-    <div className="p-6 space-y-5">
-      <h1 className="page-title">Hierarchy</h1>
+    <ModalWrapper
+      title={item ? "Edit Position" : "Add Position"}
+      onClose={onClose}
+    >
+      {error && <ErrorBox msg={error} />}
+      <div>
+        <label className="label">
+          Position Name <span className="text-red-500">*</span>
+        </label>
+        <input
+          className="input mt-1"
+          placeholder="cth: Staff, Supervisor, Manager..."
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <div>
+        <label className="label">Description</label>
+        <input
+          className="input mt-1"
+          placeholder="Opsional..."
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+        />
+      </div>
+      <ModalFooter onClose={onClose} onSave={handleSave} saving={saving} />
+    </ModalWrapper>
+  );
+}
 
-      <div className="card overflow-hidden">
-        {/* Tabs */}
-        <div className="border-b border-gray-100 flex">
-          {tabs.map(tab => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={clsx(
-                'px-5 py-3 text-sm font-medium border-b-2 -mb-px transition-colors',
-                activeTab === tab.key
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              )}
-            >
-              {tab.label}
-            </button>
-          ))}
+function EmpStatusModal({
+  item,
+  tenantId,
+  onClose,
+  onSaved,
+}: {
+  item: EmpStatus | null;
+  tenantId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [code, setCode] = useState(item?.code ?? "");
+  const [name, setName] = useState(item?.name ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (!code.trim()) return setError("Code wajib diisi");
+    if (!name.trim()) return setError("Name wajib diisi");
+    setSaving(true);
+    setError(null);
+    const payload = { code, name, tenant_id: tenantId };
+    const { error } = item
+      ? await supabase
+          .from("employment_statuses")
+          .update(payload)
+          .eq("id", item.id)
+      : await supabase.from("employment_statuses").insert(payload);
+    setSaving(false);
+    if (error) return setError(error.message);
+    onSaved();
+    onClose();
+  };
+
+  return (
+    <ModalWrapper
+      title={item ? "Edit Employment Status" : "Add Employment Status"}
+      onClose={onClose}
+    >
+      {error && <ErrorBox msg={error} />}
+      <div>
+        <label className="label">
+          Code <span className="text-red-500">*</span>
+        </label>
+        <input
+          className="input mt-1"
+          placeholder="cth: PERMANENT, PKWT, INTERNSHIP..."
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+        />
+      </div>
+      <div>
+        <label className="label">
+          Name <span className="text-red-500">*</span>
+        </label>
+        <input
+          className="input mt-1"
+          placeholder="cth: Tetap, PKWT, Magang..."
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <ModalFooter onClose={onClose} onSave={handleSave} saving={saving} />
+    </ModalWrapper>
+  );
+}
+
+function GradeModal({
+  item,
+  tenantId,
+  onClose,
+  onSaved,
+}: {
+  item: Grade | null;
+  tenantId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [code, setCode] = useState(item?.code ?? "");
+  const [name, setName] = useState(item?.name ?? "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (!code.trim()) return setError("Code wajib diisi");
+    if (!name.trim()) return setError("Name wajib diisi");
+    setSaving(true);
+    setError(null);
+    const payload = { code, name, tenant_id: tenantId };
+    const { error } = item
+      ? await supabase.from("grades").update(payload).eq("id", item.id)
+      : await supabase.from("grades").insert(payload);
+    setSaving(false);
+    if (error) return setError(error.message);
+    onSaved();
+    onClose();
+  };
+
+  return (
+    <ModalWrapper title={item ? "Edit Grade" : "Add Grade"} onClose={onClose}>
+      {error && <ErrorBox msg={error} />}
+      <div>
+        <label className="label">
+          Code <span className="text-red-500">*</span>
+        </label>
+        <input
+          className="input mt-1"
+          placeholder="cth: G1, G2, EXEC..."
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase())}
+        />
+      </div>
+      <div>
+        <label className="label">
+          Name <span className="text-red-500">*</span>
+        </label>
+        <input
+          className="input mt-1"
+          placeholder="cth: Grade 1, Executive..."
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
+      <ModalFooter onClose={onClose} onSave={handleSave} saving={saving} />
+    </ModalWrapper>
+  );
+}
+
+// ─── Shared UI ────────────────────────────────────────────────────────────────
+
+function ModalWrapper({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h2 className="text-sm font-semibold text-gray-900">{title}</h2>
+          <button onClick={onClose} className="btn-icon">
+            <X size={16} />
+          </button>
         </div>
+        <div className="p-5 space-y-4">{children}</div>
+      </div>
+    </div>
+  );
+}
 
-        {/* ── Position Tab ── */}
-        {activeTab === 'position' && (
-          <div>
-            <div className="p-4 flex items-center gap-3 border-b border-gray-100">
-              <button onClick={openPosAdd} className="btn-primary text-xs">
-                <Plus size={14} /> Add Position
-              </button>
-              <div className="relative ml-2">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
-                <input type="text" placeholder="Search" value={posSearch}
-                  onChange={e => setPosSearch(e.target.value)} className="input pl-7 w-44 text-xs" />
-              </div>
-            </div>
-
-            {posError && (
-              <div className="mx-4 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
-                {posError}
-              </div>
-            )}
-
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <th className="table-th w-16">No</th>
-                  <th className="table-th">Position Name</th>
-                  <th className="table-th w-32">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {posLoading && (
-                  <tr><td colSpan={3} className="text-center py-10 text-gray-400 text-sm">Loading...</td></tr>
-                )}
-                {!posLoading && filteredPositions.map((pos, i) => (
-                  <tr key={pos.id} className="table-tr-hover">
-                    <td className="table-td text-center text-xs text-gray-500">{i + 1}</td>
-                    <td className="table-td text-xs font-medium text-gray-800">{pos.name}</td>
-                    <td className="table-td">
-                      <div className="flex gap-1">
-                        <button onClick={() => openPosEdit(pos)}
-                          className="w-7 h-7 rounded border border-gray-200 flex items-center justify-center hover:bg-blue-50 hover:border-blue-200 transition-colors">
-                          <Edit size={12} className="text-blue-500" />
-                        </button>
-                        <button onClick={() => setPosConfirmId(pos.id)}
-                          className="w-7 h-7 rounded border border-gray-200 flex items-center justify-center hover:bg-red-50 hover:border-red-200 transition-colors">
-                          <Trash2 size={12} className="text-red-500" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {!posLoading && filteredPositions.length === 0 && !posError && (
-                  <tr><td colSpan={3} className="text-center py-10 text-gray-400 text-sm">Belum ada data posisi</td></tr>
-                )}
-              </tbody>
-            </table>
-
-            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Items per page:</span>
-                <select className="select text-xs w-16"><option>10</option></select>
-              </div>
-              <div className="text-xs text-gray-500">1–{filteredPositions.length} of {filteredPositions.length}</div>
-            </div>
-          </div>
+function ModalFooter({
+  onClose,
+  onSave,
+  saving,
+}: {
+  onClose: () => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-2 pt-2">
+      <button onClick={onClose} className="btn-secondary">
+        Cancel
+      </button>
+      <button onClick={onSave} disabled={saving} className="btn-primary">
+        {saving ? (
+          <Loader2 size={13} className="animate-spin" />
+        ) : (
+          <CheckCircle2 size={13} />
         )}
+        Save
+      </button>
+    </div>
+  );
+}
 
-        {/* ── Grade Tab ── */}
-        {activeTab === 'grade' && (
-          <div>
-            <div className="p-4 flex items-center gap-3 border-b border-gray-100">
-              <button onClick={openGradeAdd} className="btn-primary text-xs">
-                <Plus size={14} /> Add Grade
-              </button>
-              <div className="relative ml-2">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
-                <input type="text" placeholder="Search" value={gradeSearch}
-                  onChange={e => setGradeSearch(e.target.value)} className="input pl-7 w-44 text-xs" />
-              </div>
-            </div>
+function ErrorBox({ msg }: { msg: string }) {
+  return (
+    <div className="p-2.5 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600 flex items-center gap-2">
+      <AlertCircle size={13} />
+      {msg}
+    </div>
+  );
+}
 
-            {gradeError && (
-              <div className="mx-4 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
-                {gradeError}
-              </div>
-            )}
-
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <th className="table-th w-16">No</th>
-                  <th className="table-th">Grade Code</th>
-                  <th className="table-th">Grade Name</th>
-                  <th className="table-th w-32">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {gradeLoading && (
-                  <tr><td colSpan={4} className="text-center py-10 text-gray-400 text-sm">Loading...</td></tr>
-                )}
-                {!gradeLoading && filteredGrades.map((g, i) => (
-                  <tr key={g.id} className="table-tr-hover">
-                    <td className="table-td text-center text-xs text-gray-500">{i + 1}</td>
-                    <td className="table-td text-xs font-mono text-gray-700">{g.code}</td>
-                    <td className="table-td text-xs font-medium text-gray-800">{g.name}</td>
-                    <td className="table-td">
-                      <div className="flex gap-1">
-                        <button onClick={() => openGradeEdit(g)}
-                          className="w-7 h-7 rounded border border-gray-200 flex items-center justify-center hover:bg-blue-50 hover:border-blue-200 transition-colors">
-                          <Edit size={12} className="text-blue-500" />
-                        </button>
-                        <button onClick={() => setGradeConfirmId(g.id)}
-                          className="w-7 h-7 rounded border border-gray-200 flex items-center justify-center hover:bg-red-50 hover:border-red-200 transition-colors">
-                          <Trash2 size={12} className="text-red-500" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+function DataTable({
+  columns,
+  rows,
+  onEdit,
+  onDelete,
+  loading,
+}: {
+  columns: { key: string; label: string }[];
+  rows: Record<string, any>[];
+  onEdit: (row: any) => void;
+  onDelete: (row: any) => void;
+  loading: boolean;
+}) {
+  return (
+    <div className="border border-gray-200 rounded-xl overflow-hidden">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-200">
+            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-12">
+              No
+            </th>
+            {columns.map((c) => (
+              <th
+                key={c.key}
+                className="px-4 py-3 text-left text-xs font-semibold text-gray-500"
+              >
+                {c.label}
+              </th>
+            ))}
+            <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 w-24">
+              Action
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading && (
+            <tr>
+              <td colSpan={columns.length + 2} className="py-12 text-center">
+                <Loader2
+                  size={20}
+                  className="animate-spin text-gray-300 mx-auto"
+                />
+              </td>
+            </tr>
+          )}
+          {!loading && rows.length === 0 && (
+            <tr>
+              <td
+                colSpan={columns.length + 2}
+                className="py-12 text-center text-sm text-gray-400"
+              >
+                Belum ada data
+              </td>
+            </tr>
+          )}
+          {!loading &&
+            rows.map((row, i) => (
+              <tr
+                key={row.id}
+                className="border-b border-gray-100 last:border-0 hover:bg-gray-50"
+              >
+                <td className="px-4 py-3 text-xs text-gray-400">{i + 1}</td>
+                {columns.map((c) => (
+                  <td key={c.key} className="px-4 py-3 text-gray-700">
+                    {row[c.key] ?? "—"}
+                  </td>
                 ))}
-                {!gradeLoading && filteredGrades.length === 0 && !gradeError && (
-                  <tr><td colSpan={4} className="text-center py-10 text-gray-400 text-sm">Belum ada data grade</td></tr>
-                )}
-              </tbody>
-            </table>
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-1">
+                    <button
+                      onClick={() => onEdit(row)}
+                      className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors"
+                    >
+                      <Pencil size={14} />
+                    </button>
+                    <button
+                      onClick={() => onDelete(row)}
+                      className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
-            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Items per page:</span>
-                <select className="select text-xs w-16"><option>10</option></select>
-              </div>
-              <div className="text-xs text-gray-500">1–{filteredGrades.length} of {filteredGrades.length}</div>
-            </div>
-          </div>
-        )}
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
-        {/* ── Employment Status Tab ── */}
-        {activeTab === 'employment' && (
-          <div>
-            <div className="p-4 flex items-center gap-3 border-b border-gray-100">
-              <button onClick={openEmpAdd} className="btn-primary text-xs">
-                <Plus size={14} /> Add Status
-              </button>
-              <div className="relative ml-2">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">🔍</span>
-                <input type="text" placeholder="Search" value={empSearch}
-                  onChange={e => setEmpSearch(e.target.value)} className="input pl-7 w-44 text-xs" />
-              </div>
-            </div>
+export default function HierarchyPage() {
+  const tenantId = useAuthStore((s) => s.tenant?.id);
 
-            {empError && (
-              <div className="mx-4 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
-                {empError}
-              </div>
-            )}
+  const [tab, setTab] = useState<Tab>("position");
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [statuses, setStatuses] = useState<EmpStatus[]>([]);
+  const [grades, setGrades] = useState<Grade[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
-            <table className="w-full">
-              <thead>
-                <tr>
-                  <th className="table-th w-16">No</th>
-                  <th className="table-th">Code</th>
-                  <th className="table-th">Status Name</th>
-                  <th className="table-th w-32">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {empLoading && (
-                  <tr><td colSpan={4} className="text-center py-10 text-gray-400 text-sm">Loading...</td></tr>
-                )}
-                {!empLoading && filteredStatuses.map((s, i) => (
-                  <tr key={s.id} className="table-tr-hover">
-                    <td className="table-td text-center text-xs text-gray-500">{i + 1}</td>
-                    <td className="table-td text-xs font-mono text-gray-700">{s.code}</td>
-                    <td className="table-td text-xs font-medium text-gray-800">{s.name}</td>
-                    <td className="table-td">
-                      <div className="flex gap-1">
-                        <button onClick={() => openEmpEdit(s)}
-                          className="w-7 h-7 rounded border border-gray-200 flex items-center justify-center hover:bg-blue-50 hover:border-blue-200 transition-colors">
-                          <Edit size={12} className="text-blue-500" />
-                        </button>
-                        <button onClick={() => setEmpConfirmId(s.id)}
-                          className="w-7 h-7 rounded border border-gray-200 flex items-center justify-center hover:bg-red-50 hover:border-red-200 transition-colors">
-                          <Trash2 size={12} className="text-red-500" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-                {!empLoading && filteredStatuses.length === 0 && !empError && (
-                  <tr><td colSpan={4} className="text-center py-10 text-gray-400 text-sm">Belum ada data status karyawan</td></tr>
-                )}
-              </tbody>
-            </table>
+  type ModalType =
+    | "pos-create"
+    | "pos-edit"
+    | "stat-create"
+    | "stat-edit"
+    | "grade-create"
+    | "grade-edit"
+    | null;
+  const [modal, setModal] = useState<ModalType>(null);
+  const [selPos, setSelPos] = useState<Position | null>(null);
+  const [selStat, setSelStat] = useState<EmpStatus | null>(null);
+  const [selGrade, setSelGrade] = useState<Grade | null>(null);
 
-            <div className="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500">Items per page:</span>
-                <select className="select text-xs w-16"><option>10</option></select>
-              </div>
-              <div className="text-xs text-gray-500">1–{filteredStatuses.length} of {filteredStatuses.length}</div>
-            </div>
-          </div>
-        )}
+  const fetchPositions = useCallback(async () => {
+    if (!tenantId) return;
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase
+      .from("positions")
+      .select("id, name, description")
+      .eq("tenant_id", tenantId)
+      .is("deleted_at", null)
+      .order("name");
+    if (error) setError(error.message);
+    else setPositions(data ?? []);
+    setLoading(false);
+  }, [tenantId]);
+
+  const fetchStatuses = useCallback(async () => {
+    if (!tenantId) return;
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase
+      .from("employment_statuses")
+      .select("id, code, name")
+      .eq("tenant_id", tenantId)
+      .is("deleted_at", null)
+      .order("name");
+    if (error) setError(error.message);
+    else setStatuses(data ?? []);
+    setLoading(false);
+  }, [tenantId]);
+
+  const fetchGrades = useCallback(async () => {
+    if (!tenantId) return;
+    setLoading(true);
+    setError(null);
+    const { data, error } = await supabase
+      .from("grades")
+      .select("id, code, name")
+      .eq("tenant_id", tenantId)
+      .is("deleted_at", null)
+      .order("code");
+    if (error) setError(error.message);
+    else setGrades(data ?? []);
+    setLoading(false);
+  }, [tenantId]);
+
+  useEffect(() => {
+    setSearch("");
+    if (tab === "position") fetchPositions();
+    else if (tab === "employment_status") fetchStatuses();
+    else fetchGrades();
+  }, [tab]);
+
+  // Soft delete helpers
+  const deletePos = async (p: Position) => {
+    if (!confirm(`Hapus position "${p.name}"?`)) return;
+    await supabase
+      .from("positions")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", p.id);
+    fetchPositions();
+  };
+  const deleteStat = async (s: EmpStatus) => {
+    if (!confirm(`Hapus status "${s.name}"?`)) return;
+    await supabase
+      .from("employment_statuses")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", s.id);
+    fetchStatuses();
+  };
+  const deleteGrade = async (g: Grade) => {
+    if (!confirm(`Hapus grade "${g.name}"?`)) return;
+    await supabase
+      .from("grades")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", g.id);
+    fetchGrades();
+  };
+
+  // Filtered data
+  const filteredPos = positions.filter(
+    (p) =>
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.description ?? "").toLowerCase().includes(search.toLowerCase()),
+  );
+  const filteredStat = statuses.filter(
+    (s) =>
+      s.code.toLowerCase().includes(search.toLowerCase()) ||
+      s.name.toLowerCase().includes(search.toLowerCase()),
+  );
+  const filteredGrade = grades.filter(
+    (g) =>
+      g.code.toLowerCase().includes(search.toLowerCase()) ||
+      g.name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "position", label: "Position" },
+    { key: "employment_status", label: "Employment Status" },
+    { key: "grade", label: "Grade" },
+  ];
+
+  const addLabel =
+    tab === "position"
+      ? "Add Position"
+      : tab === "employment_status"
+        ? "Add Status"
+        : "Add Grade";
+
+  const handleAdd = () => {
+    if (tab === "position") setModal("pos-create");
+    else if (tab === "employment_status") setModal("stat-create");
+    else setModal("grade-create");
+  };
+
+  return (
+    <div className="p-6 max-w-4xl mx-auto">
+      <div className="mb-6">
+        <h1 className="text-xl font-semibold text-gray-900">Hierarchy</h1>
+        <p className="text-sm text-gray-400 mt-0.5">
+          Kelola jabatan, grade, dan status kepegawaian
+        </p>
       </div>
 
-      {/* ── Position Modal ── */}
-      {posModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-dropdown w-full max-w-sm p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-4">
-              {posEdit ? 'Edit Position' : 'Add Position'}
-            </h3>
-            {posMutations.saveError && (
-              <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
-                {posMutations.saveError}
-              </div>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200 mb-6">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className={clsx(
+              "px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px",
+              tab === t.key
+                ? "border-blue-500 text-blue-600"
+                : "border-transparent text-gray-500 hover:text-gray-700",
             )}
-            <div>
-              <label className="text-xs font-medium text-gray-600 mb-1 block">Position Name</label>
-              <input value={posName} onChange={e => setPosName(e.target.value)}
-                className="input text-sm" placeholder="e.g. Supervisor" />
-            </div>
-            <div className="flex gap-2 mt-5 justify-end">
-              <button onClick={() => setPosModal(false)} className="btn-secondary text-xs">Cancel</button>
-              <button onClick={handlePosSave} disabled={posMutations.isSaving} className="btn-primary text-xs">
-                {posMutations.isSaving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 flex items-center gap-2 mb-4">
+          <AlertCircle size={14} />
+          {error}
         </div>
       )}
 
-      {/* ── Grade Modal ── */}
-      {gradeModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-dropdown w-full max-w-sm p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-4">
-              {gradeEdit ? 'Edit Grade' : 'Add Grade'}
-            </h3>
-            {gradeMutations.saveError && (
-              <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
-                {gradeMutations.saveError}
-              </div>
-            )}
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Grade Code</label>
-                <input value={gradeCode} onChange={e => setGradeCode(e.target.value)}
-                  className="input text-sm" placeholder="e.g. G1" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Grade Name</label>
-                <input value={gradeName} onChange={e => setGradeName(e.target.value)}
-                  className="input text-sm" placeholder="e.g. Grade 1 - Entry Level" />
-              </div>
-            </div>
-            <div className="flex gap-2 mt-5 justify-end">
-              <button onClick={() => setGradeModal(false)} className="btn-secondary text-xs">Cancel</button>
-              <button onClick={handleGradeSave} disabled={gradeMutations.isSaving} className="btn-primary text-xs">
-                {gradeMutations.isSaving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="relative">
+          <Search
+            size={14}
+            className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+          <input
+            className="input pl-9 text-sm w-64"
+            placeholder="Search..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
+        <button onClick={handleAdd} className="btn-primary">
+          <Plus size={14} />
+          {addLabel}
+        </button>
+      </div>
+
+      {/* Tables */}
+      {tab === "position" && (
+        <DataTable
+          loading={loading}
+          columns={[
+            { key: "name", label: "Position Name" },
+            { key: "description", label: "Description" },
+          ]}
+          rows={filteredPos}
+          onEdit={(row) => {
+            setSelPos(row);
+            setModal("pos-edit");
+          }}
+          onDelete={deletePos}
+        />
       )}
 
-      {/* ── Employment Status Modal ── */}
-      {empModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-dropdown w-full max-w-sm p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-4">
-              {empEdit ? 'Edit Employment Status' : 'Add Employment Status'}
-            </h3>
-            {empMutations.saveError && (
-              <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
-                {empMutations.saveError}
-              </div>
-            )}
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Code</label>
-                <input value={empCode} onChange={e => setEmpCode(e.target.value)}
-                  className="input text-sm" placeholder="e.g. PKWT" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-600 mb-1 block">Status Name</label>
-                <input value={empName} onChange={e => setEmpName(e.target.value)}
-                  className="input text-sm" placeholder="e.g. Pegawai Kontrak" />
-              </div>
-            </div>
-            <div className="flex gap-2 mt-5 justify-end">
-              <button onClick={() => setEmpModal(false)} className="btn-secondary text-xs">Cancel</button>
-              <button onClick={handleEmpSave} disabled={empMutations.isSaving} className="btn-primary text-xs">
-                {empMutations.isSaving ? 'Saving...' : 'Save'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {tab === "employment_status" && (
+        <DataTable
+          loading={loading}
+          columns={[
+            { key: "code", label: "Code" },
+            { key: "name", label: "Name" },
+          ]}
+          rows={filteredStat}
+          onEdit={(row) => {
+            setSelStat(row);
+            setModal("stat-edit");
+          }}
+          onDelete={deleteStat}
+        />
       )}
 
-      {/* ── Confirm Delete Modals ── */}
-      {posConfirmId && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-dropdown w-full max-w-sm p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Hapus Posisi?</h3>
-            <p className="text-sm text-gray-500 mb-5">Data posisi ini akan dihapus secara permanen.</p>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setPosConfirmId(null)} className="btn-secondary text-xs">Batal</button>
-              <button onClick={() => handlePosDelete(posConfirmId)}
-                disabled={posMutations.isDeleting}
-                className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-                {posMutations.isDeleting ? 'Menghapus...' : 'Hapus'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {tab === "grade" && (
+        <DataTable
+          loading={loading}
+          columns={[
+            { key: "code", label: "Code" },
+            { key: "name", label: "Name" },
+          ]}
+          rows={filteredGrade}
+          onEdit={(row) => {
+            setSelGrade(row);
+            setModal("grade-edit");
+          }}
+          onDelete={deleteGrade}
+        />
       )}
 
-      {gradeConfirmId && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-dropdown w-full max-w-sm p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Hapus Grade?</h3>
-            <p className="text-sm text-gray-500 mb-5">Data grade ini akan dihapus secara permanen.</p>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setGradeConfirmId(null)} className="btn-secondary text-xs">Batal</button>
-              <button onClick={() => handleGradeDelete(gradeConfirmId)}
-                disabled={gradeMutations.isDeleting}
-                className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-                {gradeMutations.isDeleting ? 'Menghapus...' : 'Hapus'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {/* Modals */}
+      {(modal === "pos-create" || modal === "pos-edit") && tenantId && (
+        <PositionModal
+          item={modal === "pos-edit" ? selPos : null}
+          tenantId={tenantId}
+          onClose={() => setModal(null)}
+          onSaved={fetchPositions}
+        />
       )}
-
-      {empConfirmId && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-dropdown w-full max-w-sm p-6">
-            <h3 className="text-base font-semibold text-gray-900 mb-2">Hapus Status Karyawan?</h3>
-            <p className="text-sm text-gray-500 mb-5">Data status ini akan dihapus secara permanen.</p>
-            <div className="flex gap-2 justify-end">
-              <button onClick={() => setEmpConfirmId(null)} className="btn-secondary text-xs">Batal</button>
-              <button onClick={() => handleEmpDelete(empConfirmId)}
-                disabled={empMutations.isDeleting}
-                className="px-3 py-1.5 text-xs font-medium bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
-                {empMutations.isDeleting ? 'Menghapus...' : 'Hapus'}
-              </button>
-            </div>
-          </div>
-        </div>
+      {(modal === "stat-create" || modal === "stat-edit") && tenantId && (
+        <EmpStatusModal
+          item={modal === "stat-edit" ? selStat : null}
+          tenantId={tenantId}
+          onClose={() => setModal(null)}
+          onSaved={fetchStatuses}
+        />
+      )}
+      {(modal === "grade-create" || modal === "grade-edit") && tenantId && (
+        <GradeModal
+          item={modal === "grade-edit" ? selGrade : null}
+          tenantId={tenantId}
+          onClose={() => setModal(null)}
+          onSaved={fetchGrades}
+        />
       )}
     </div>
-  )
+  );
 }

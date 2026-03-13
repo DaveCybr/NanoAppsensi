@@ -1,3 +1,6 @@
+// PATCH: web/src/stores/authStore.ts
+// Ganti seluruh isi file dengan ini
+
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { User, Session } from "@supabase/supabase-js";
@@ -8,17 +11,20 @@ import type { Tables } from "../types/database.types";
 type UserProfile = Tables<"users">;
 type TenantInfo = Tables<"tenants">;
 
+// Role yang boleh akses web admin panel
+const ALLOWED_ROLES = ["superadmin", "hr_manager", "admin"] as const;
+type AllowedRole = (typeof ALLOWED_ROLES)[number];
+
 interface AuthState {
-  // State
   user: User | null;
   session: Session | null;
   profile: UserProfile | null;
   tenant: TenantInfo | null;
+  roleName: string | null; // ← tambahan: simpan role name
   isLoading: boolean;
   isInitialized: boolean;
   error: string | null;
 
-  // Actions
   initialize: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -30,36 +36,38 @@ let authListenerSetup = false;
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set, get) => ({
+    (set, _get) => ({
       user: null,
       session: null,
       profile: null,
       tenant: null,
+      roleName: null,
       isLoading: false,
       isInitialized: false,
       error: null,
 
-      // ── Initialize on app start ──────────────────────────────────────────
+      // ── Initialize ────────────────────────────────────────────────────────
       initialize: async () => {
         set({ isLoading: true });
 
         try {
-          // Always check for valid Supabase session
           const {
             data: { session },
           } = await supabase.auth.getSession();
 
           if (session?.user) {
             try {
-              const [profile, tenant] = await Promise.all([
+              const [profile, tenant, roleName] = await Promise.all([
                 fetchProfile(session.user.id),
                 fetchTenant(session.user),
+                fetchRoleName(session.user),
               ]);
               set({
                 user: session.user,
                 session,
                 profile,
                 tenant,
+                roleName,
                 isInitialized: true,
                 isLoading: false,
                 error: null,
@@ -69,23 +77,23 @@ export const useAuthStore = create<AuthState>()(
                 "[Auth] Failed to fetch profile/tenant:",
                 profileError,
               );
-              // Still set user/session even if profile fetch fails
               set({
                 user: session.user,
                 session,
                 profile: null,
                 tenant: null,
+                roleName: null,
                 isInitialized: true,
                 isLoading: false,
               });
             }
           } else {
-            // No valid session found
             set({
               user: null,
               session: null,
               profile: null,
               tenant: null,
+              roleName: null,
               isInitialized: true,
               isLoading: false,
             });
@@ -100,34 +108,42 @@ export const useAuthStore = create<AuthState>()(
           });
         }
 
-        // Set up auth listener only once
+        // Auth state listener — only once
         if (!authListenerSetup) {
           authListenerSetup = true;
           supabase.auth.onAuthStateChange(async (event, session) => {
             if (event === "SIGNED_IN" && session?.user) {
               try {
-                const [profile, tenant] = await Promise.all([
+                const [profile, tenant, roleName] = await Promise.all([
                   fetchProfile(session.user.id),
                   fetchTenant(session.user),
+                  fetchRoleName(session.user),
                 ]);
                 set({
                   user: session.user,
                   session,
                   profile,
                   tenant,
+                  roleName,
                   error: null,
                 });
-              } catch (err) {
-                console.warn("[Auth] Failed to fetch in listener:", err);
+              } catch {
                 set({
                   user: session.user,
                   session,
                   profile: null,
                   tenant: null,
+                  roleName: null,
                 });
               }
             } else if (event === "SIGNED_OUT") {
-              set({ user: null, session: null, profile: null, tenant: null });
+              set({
+                user: null,
+                session: null,
+                profile: null,
+                tenant: null,
+                roleName: null,
+              });
             } else if (event === "TOKEN_REFRESHED" && session) {
               set({ session });
             }
@@ -146,16 +162,23 @@ export const useAuthStore = create<AuthState>()(
           if (error) throw error;
 
           if (data.user) {
-            const [profile, tenant] = await Promise.all([
+            const [profile, tenant, roleName] = await Promise.all([
               fetchProfile(data.user.id),
               fetchTenant(data.user),
+              fetchRoleName(data.user),
             ]);
 
-            // Guard: only HR or Admin can access web panel
-            if (profile && !isAdminRole(profile)) {
+            // ── ROLE CHECK ─────────────────────────────────────────────────
+            // Prioritas: cek dari JWT app_metadata (di-inject oleh hook)
+            // Fallback: cek dari role yang baru di-fetch dari DB
+            const jwtRole = data.user.app_metadata?.role as string | undefined;
+            const effectiveRole = jwtRole ?? roleName ?? "";
+
+            if (!isAllowedRole(effectiveRole)) {
               await supabase.auth.signOut();
               throw new Error(
-                "Akses ditolak. Hanya HR/Admin yang dapat mengakses panel ini.",
+                `Akses ditolak. Role "${effectiveRole || "staff"}" tidak memiliki akses ke panel admin. ` +
+                  `Hanya ${ALLOWED_ROLES.join(", ")} yang diizinkan.`,
               );
             }
 
@@ -164,6 +187,7 @@ export const useAuthStore = create<AuthState>()(
               session: data.session,
               profile,
               tenant,
+              roleName: effectiveRole,
               error: null,
             });
           }
@@ -184,12 +208,12 @@ export const useAuthStore = create<AuthState>()(
         } catch (err) {
           console.error("[Auth] Signout error:", err);
         } finally {
-          // Always clear state even if signout fails
           set({
             user: null,
             session: null,
             profile: null,
             tenant: null,
+            roleName: null,
             error: null,
             isLoading: false,
           });
@@ -200,20 +224,19 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "tefa-auth",
-      // Only persist error state if needed for UX
-      partialize: (state) => ({}),
+      partialize: () => ({}), // tidak persist apapun ke localStorage
     },
   ),
 );
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
 async function fetchProfile(userId: string): Promise<UserProfile | null> {
   const { data, error } = await supabase
     .from("users")
     .select("*")
     .eq("id", userId)
     .single();
-
   if (error) {
     console.error("[Auth] fetchProfile:", error);
     return null;
@@ -222,11 +245,22 @@ async function fetchProfile(userId: string): Promise<UserProfile | null> {
 }
 
 async function fetchTenant(user: User): Promise<TenantInfo | null> {
-  // tenant_id is injected into JWT by custom_access_token_hook
-  const tenantId = user.app_metadata?.tenant_id as string | undefined;
+  // Prioritas: dari JWT app_metadata (injected by auth hook)
+  let tenantId = user.app_metadata?.tenant_id as string | undefined;
+
+  // Fallback: ambil dari tabel users jika JWT belum punya tenant_id
+  if (!tenantId) {
+    console.warn("[Auth] No tenant_id in JWT, falling back to DB.");
+    const { data: userData } = await supabase
+      .from("users")
+      .select("tenant_id")
+      .eq("id", user.id)
+      .single();
+    tenantId = userData?.tenant_id ?? undefined;
+  }
 
   if (!tenantId) {
-    console.warn("[Auth] No tenant_id in JWT. Skipping tenant fetch.");
+    console.warn("[Auth] tenant_id not found for user.");
     return null;
   }
 
@@ -235,7 +269,6 @@ async function fetchTenant(user: User): Promise<TenantInfo | null> {
     .select("*")
     .eq("id", tenantId)
     .single();
-
   if (error) {
     console.error("[Auth] fetchTenant:", error);
     return null;
@@ -243,10 +276,29 @@ async function fetchTenant(user: User): Promise<TenantInfo | null> {
   return data;
 }
 
-function isAdminRole(profile: UserProfile): boolean {
-  // Will be matched against role name via roles table
-  // For now we check role_id existence as a soft guard
-  return profile.is_active === true;
+/**
+ * Ambil role name dari JWT app_metadata (sudah di-inject auth hook).
+ * Fallback: query DB langsung jika JWT belum ter-refresh.
+ */
+async function fetchRoleName(user: User): Promise<string | null> {
+  // Prioritas 1: dari JWT (paling fresh setelah login)
+  const jwtRole = user.app_metadata?.role as string | undefined;
+  if (jwtRole) return jwtRole;
+
+  // Fallback: query DB
+  const { data } = await supabase
+    .from("users")
+    .select("roles ( name )")
+    .eq("id", user.id)
+    .single();
+
+  return (data as any)?.roles?.name ?? null;
+}
+
+function isAllowedRole(role: string): boolean {
+  const normalized = role.toLowerCase().replace(/\s+/g, "_");
+  return ALLOWED_ROLES.includes(normalized as AllowedRole) ||
+    ALLOWED_ROLES.includes(role as AllowedRole);
 }
 
 function translateAuthError(msg: string): string {
@@ -258,6 +310,7 @@ function translateAuthError(msg: string): string {
     return "Terlalu banyak percobaan. Coba lagi nanti.";
   if (msg.includes("User not found")) return "Akun tidak ditemukan.";
   if (msg.includes("Error running hook URI"))
-    return 'Konfigurasi auth hook bermasalah. Jalankan SQL perbaikan di Supabase Dashboard (lihat supabase-setup.sql bagian "Fix Auth Hook").';
+    return "Konfigurasi auth hook bermasalah. Jalankan SQL fix di Supabase Dashboard.";
+  if (msg.includes("Akses ditolak")) return msg; // sudah bahasa Indonesia, pass-through
   return msg;
 }

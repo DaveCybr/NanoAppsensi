@@ -60,7 +60,7 @@ export async function getAttendanceReport(
     .from('attendances')
     .select(`
       *,
-      employees (
+      employees!attendances_employee_id_fkey (
         id, full_name, photo_url, employee_code,
         departments ( name ),
         positions   ( name )
@@ -117,7 +117,7 @@ export async function getAttendanceStats(
       check_in_is_valid_location,
       check_out_is_valid_location,
       attendance_status ( code ),
-      employees ( department_id )
+      employees!attendances_employee_id_fkey ( department_id )
     `)
     .eq('tenant_id', tenantId)
     .gte('attendance_date', startDate)

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
@@ -13,11 +13,15 @@ export default function RequireAuth({
   const isInitialized = useAuthStore((s) => s.isInitialized);
   const initialize = useAuthStore((s) => s.initialize);
   const location = useLocation();
+  const initCalledRef = useRef(false);
 
   useEffect(() => {
-    console.log("[RequireAuth] Mounting, calling initialize");
-    initialize();
-  }, []); // Empty dependency array - only on mount
+    if (!initCalledRef.current && !isInitialized) {
+      initCalledRef.current = true;
+      console.log("[RequireAuth] Mounting, calling initialize");
+      initialize();
+    }
+  }, [isInitialized, initialize]);
 
   console.log("[RequireAuth] Render:", {
     isInitialized,
