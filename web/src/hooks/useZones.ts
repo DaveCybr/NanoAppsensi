@@ -4,8 +4,6 @@ import {
   type ZoneRow, type ZoneFormData,
 } from '../lib/zonesService'
 import { useAuthStore } from '../stores/authStore'
-import { hasValidSession } from '../lib/sessionGuard'
-
 export function useZones() {
   const tenantId = useAuthStore(s => s.tenant?.id)
   const [zones, setZones] = useState<ZoneRow[]>([])
@@ -17,14 +15,15 @@ export function useZones() {
 
   const load = useCallback(async () => {
     if (!tenantId) return
-    const valid = await hasValidSession()
-    if (!valid) return
     setIsLoading(true)
     setError(null)
-    const { data, error } = await getZones(tenantId)
-    if (error) setError(error)
-    else setZones(data)
-    setIsLoading(false)
+    try {
+      const { data, error } = await getZones(tenantId)
+      if (error) setError(error)
+      else setZones(data)
+    } finally {
+      setIsLoading(false)
+    }
   }, [tenantId])
 
   useEffect(() => { load() }, [load])
@@ -32,28 +31,47 @@ export function useZones() {
   const create = async (form: ZoneFormData) => {
     if (!tenantId) return { error: 'Tenant tidak ditemukan' }
     setIsSaving(true); setSaveError(null)
-    const { error } = await createZone(tenantId, form)
-    setIsSaving(false)
-    if (error) { setSaveError(error); return { error } }
-    await load()
-    return { error: null }
+    try {
+      const { error } = await createZone(tenantId, form)
+      if (error) { setSaveError(error); return { error } }
+      await load()
+      return { error: null }
+    } catch (e: any) {
+      const msg = e?.message ?? 'Gagal menyimpan'
+      setSaveError(msg)
+      return { error: msg }
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const update = async (id: string, form: ZoneFormData) => {
     setIsSaving(true); setSaveError(null)
-    const { error } = await updateZone(id, form)
-    setIsSaving(false)
-    if (error) { setSaveError(error); return { error } }
-    await load()
-    return { error: null }
+    try {
+      const { error } = await updateZone(id, form)
+      if (error) { setSaveError(error); return { error } }
+      await load()
+      return { error: null }
+    } catch (e: any) {
+      const msg = e?.message ?? 'Gagal menyimpan'
+      setSaveError(msg)
+      return { error: msg }
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const remove = async (id: string) => {
     setIsDeleting(true)
-    const { error } = await deleteZone(id)
-    setIsDeleting(false)
-    if (!error) await load()
-    return { error }
+    try {
+      const { error } = await deleteZone(id)
+      if (!error) await load()
+      return { error }
+    } catch (e: any) {
+      return { error: e?.message ?? 'Gagal menghapus' }
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   return { zones, isLoading, error, isSaving, isDeleting, saveError, setSaveError, create, update, remove, refetch: load }

@@ -7,8 +7,6 @@ import {
   type DepartmentOption, type EmployeeOption,
 } from '../lib/summaryReportService'
 import { useAuthStore } from '../stores/authStore'
-import { hasValidSession } from '../lib/sessionGuard'
-
 // ── today string ──────────────────────────────────────────────────────────────
 function today() {
   return new Date().toISOString().slice(0, 10)
@@ -61,14 +59,15 @@ export function useSummaryReport() {
   // ── Load table rows ────────────────────────────────────────────────────────
   const loadRows = useCallback(async (f: AttendanceFilters) => {
     if (!tenantId) return
-    const valid = await hasValidSession()
-    if (!valid) return
     setIsLoadingRows(true)
     setError(null)
-    const { data, count, error } = await getAttendanceReport(tenantId, f)
-    if (error) setError(error)
-    else { setRows(data); setTotalCount(count) }
-    setIsLoadingRows(false)
+    try {
+      const { data, count, error } = await getAttendanceReport(tenantId, f)
+      if (error) setError(error)
+      else { setRows(data); setTotalCount(count) }
+    } finally {
+      setIsLoadingRows(false)
+    }
   }, [tenantId])
 
   // ── Load stats + chart (only when date/dept filter changes) ───────────────

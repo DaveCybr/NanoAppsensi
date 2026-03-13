@@ -1,8 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getIssueAttendances, type IssueAttendanceRow, type IssueAttendanceFilters } from '../lib/issueAttendanceService'
 import { useAuthStore } from '../stores/authStore'
-import { hasValidSession } from '../lib/sessionGuard'
-
 export function useIssueAttendance(filters: IssueAttendanceFilters = {}) {
   const tenantId = useAuthStore(s => s.tenant?.id)
 
@@ -13,17 +11,18 @@ export function useIssueAttendance(filters: IssueAttendanceFilters = {}) {
 
   const load = useCallback(async (f: IssueAttendanceFilters) => {
     if (!tenantId) return
-    const valid = await hasValidSession()
-    if (!valid) return
     setIsLoading(true)
     setError(null)
-    const result = await getIssueAttendances(tenantId, f)
-    if (result.error) setError(result.error)
-    else {
-      setRecords(result.data)
-      setTotal(result.count)
+    try {
+      const result = await getIssueAttendances(tenantId, f)
+      if (result.error) setError(result.error)
+      else {
+        setRecords(result.data)
+        setTotal(result.count)
+      }
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }, [tenantId])
 
   useEffect(() => { load(filters) }, [JSON.stringify(filters), load])

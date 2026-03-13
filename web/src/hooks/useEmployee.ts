@@ -23,14 +23,19 @@ export function useEmployeeList(initialFilters: EmployeeFilters = {}) {
     if (!tenantId) return
     setIsLoading(true)
     setError(null)
-    const result = await getEmployees(f)
-    if (result.error) {
-      setError(result.error)
-    } else {
-      setEmployees(result.data)
-      setTotalCount(result.count)
+    try {
+      const result = await getEmployees(f)
+      if (result.error) {
+        setError(result.error)
+      } else {
+        setEmployees(result.data)
+        setTotalCount(result.count)
+      }
+    } catch (e: any) {
+      setError(e?.message ?? 'Gagal memuat data')
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }, [tenantId])
 
   useEffect(() => { load(filters) }, [filters, load])
@@ -142,6 +147,9 @@ export function useEmployeeFormData() {
       setWorkLocations(w.data)
       setManagers(m.data)
       setGroups(g.data ?? [])
+    }).catch(() => {
+      // ignore form data fetch errors — fields will just be empty
+    }).finally(() => {
       setIsLoading(false)
     })
   }, [tenantId])

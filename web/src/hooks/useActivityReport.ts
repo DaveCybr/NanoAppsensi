@@ -5,8 +5,6 @@ import {
 } from '../lib/activityReportService'
 import { getReportFilterOptions, type DepartmentOption } from '../lib/summaryReportService'
 import { useAuthStore } from '../stores/authStore'
-import { hasValidSession } from '../lib/sessionGuard'
-
 function today() { return new Date().toISOString().slice(0, 10) }
 
 export function useActivityReport() {
@@ -32,13 +30,14 @@ export function useActivityReport() {
 
   const load = useCallback(async (f: ActivityReportFilters) => {
     if (!tenantId) return
-    const valid = await hasValidSession()
-    if (!valid) return
     setIsLoading(true); setError(null)
-    const { data, count, error } = await getActivityReportRows(tenantId, f)
-    if (error) setError(error)
-    else { setRows(data); setTotalCount(count) }
-    setIsLoading(false)
+    try {
+      const { data, count, error } = await getActivityReportRows(tenantId, f)
+      if (error) setError(error)
+      else { setRows(data); setTotalCount(count) }
+    } finally {
+      setIsLoading(false)
+    }
   }, [tenantId])
 
   useEffect(() => { load(filters) }, [filters, load])

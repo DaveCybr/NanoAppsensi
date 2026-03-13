@@ -4,8 +4,6 @@ import {
   type CorrectionRow, type ApprovalFilters,
 } from '../lib/approvalService'
 import { useAuthStore } from '../stores/authStore'
-import { hasValidSession } from '../lib/sessionGuard'
-
 export function useApproval(filters: ApprovalFilters = {}) {
   const tenantId = useAuthStore(s => s.tenant?.id)
   const userId   = useAuthStore(s => s.user?.id)
@@ -18,13 +16,14 @@ export function useApproval(filters: ApprovalFilters = {}) {
 
   const load = useCallback(async (f: ApprovalFilters) => {
     if (!tenantId) return
-    const valid = await hasValidSession()
-    if (!valid) return
     setIsLoading(true); setError(null)
-    const result = await getCorrectionRequests(tenantId, f)
-    if (result.error) setError(result.error)
-    else { setRecords(result.data); setTotal(result.count) }
-    setIsLoading(false)
+    try {
+      const result = await getCorrectionRequests(tenantId, f)
+      if (result.error) setError(result.error)
+      else { setRecords(result.data); setTotal(result.count) }
+    } finally {
+      setIsLoading(false)
+    }
   }, [tenantId])
 
   useEffect(() => { load(filters) }, [JSON.stringify(filters), load])

@@ -127,6 +127,8 @@ export const useAuthStore = create<AuthState>()(
                   tenant,
                   roleName,
                   error: null,
+                  isInitialized: true, // ← tambahkan ini
+                  isLoading: false, // ← tambahkan ini
                 });
               } catch {
                 set({
@@ -135,6 +137,8 @@ export const useAuthStore = create<AuthState>()(
                   profile: null,
                   tenant: null,
                   roleName: null,
+                  isInitialized: true, // ← tambahkan ini
+                  isLoading: false, // ← tambahkan ini
                 });
               }
             } else if (event === "TOKEN_REFRESHED" && session) {
@@ -304,8 +308,10 @@ async function fetchRoleName(user: User): Promise<string | null> {
 
 function isAllowedRole(role: string): boolean {
   const normalized = role.toLowerCase().replace(/\s+/g, "_");
-  return ALLOWED_ROLES.includes(normalized as AllowedRole) ||
-    ALLOWED_ROLES.includes(role as AllowedRole);
+  return (
+    ALLOWED_ROLES.includes(normalized as AllowedRole) ||
+    ALLOWED_ROLES.includes(role as AllowedRole)
+  );
 }
 
 function translateAuthError(msg: string): string {

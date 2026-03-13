@@ -7,8 +7,6 @@ import {
   type LocationMapSummary,
 } from "../lib/locationMapService";
 import { useAuthStore } from "../stores/authStore";
-import { hasValidSession } from "../lib/sessionGuard";
-
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -30,17 +28,18 @@ export function useLocationMap() {
   const load = useCallback(
     async (d: string) => {
       if (!tenantId) return;
-      const valid = await hasValidSession();
-      if (!valid) return;
       setIsLoading(true);
       setError(null);
-      const { data, summary, error } = await getLiveLocations(tenantId, d);
-      if (error) setError(error);
-      else {
-        setRows(data);
-        setSummary(summary);
+      try {
+        const { data, summary, error } = await getLiveLocations(tenantId, d);
+        if (error) setError(error);
+        else {
+          setRows(data);
+          setSummary(summary);
+        }
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     },
     [tenantId],
   );

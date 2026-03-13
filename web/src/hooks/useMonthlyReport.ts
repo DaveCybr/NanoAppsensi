@@ -5,8 +5,6 @@ import {
 } from '../lib/monthlyReportService'
 import { getReportFilterOptions, type DepartmentOption, type EmployeeOption } from '../lib/summaryReportService'
 import { useAuthStore } from '../stores/authStore'
-import { hasValidSession } from '../lib/sessionGuard'
-
 function today() { return new Date().toISOString().slice(0, 10) }
 
 const EMPTY_STATS: MonthlyReportStats = { total_late_minutes: 0, total_work_hours: 0, total_employees: 0 }
@@ -39,17 +37,18 @@ export function useMonthlyReport() {
 
   const load = useCallback(async (f: MonthlyReportFilters) => {
     if (!tenantId) return
-    const valid = await hasValidSession()
-    if (!valid) return
     setIsLoading(true); setError(null)
-    const [rowsRes, statsRes] = await Promise.all([
-      getMonthlyReportRows(tenantId, f),
-      getMonthlyReportStats(tenantId, f),
-    ])
-    if (rowsRes.error) setError(rowsRes.error)
-    else { setRows(rowsRes.data); setTotalCount(rowsRes.count) }
-    if (!statsRes.error) setStats(statsRes.data)
-    setIsLoading(false)
+    try {
+      const [rowsRes, statsRes] = await Promise.all([
+        getMonthlyReportRows(tenantId, f),
+        getMonthlyReportStats(tenantId, f),
+      ])
+      if (rowsRes.error) setError(rowsRes.error)
+      else { setRows(rowsRes.data); setTotalCount(rowsRes.count) }
+      if (!statsRes.error) setStats(statsRes.data)
+    } finally {
+      setIsLoading(false)
+    }
   }, [tenantId])
 
   useEffect(() => { load(filters) }, [filters, load])

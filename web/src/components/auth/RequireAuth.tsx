@@ -1,57 +1,30 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
-import { supabase } from "../../lib/supabase";
 
 export default function RequireAuth({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const user = useAuthStore((s) => s.user);
-  const isLoading = useAuthStore((s) => s.isLoading);
+  const user          = useAuthStore((s) => s.user);
   const isInitialized = useAuthStore((s) => s.isInitialized);
-  const initialize = useAuthStore((s) => s.initialize);
-  const location = useLocation();
-  const initCalledRef = useRef(false);
+  const location      = useLocation();
 
-  // Initial boot
+  // ── Initial boot ───────────────────────────────────────────────────────────
+  // Call initialize() once via getState() — not as a reactive selector,
+  // which would cause an infinite re-render loop.
   useEffect(() => {
-    if (!initCalledRef.current && !isInitialized) {
-      initCalledRef.current = true;
-      console.log("[RequireAuth] Mounting, calling initialize");
-      initialize();
+    if (!isInitialized) {
+      useAuthStore.getState().initialize();
     }
-  }, [isInitialized, initialize]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-check session when tab becomes visible after idle
-  useEffect(() => {
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState !== "visible") return;
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      const currentUser = useAuthStore.getState().user;
-
-      if (!session || !currentUser) {
-        // Session expired or state lost — clear stuck spinners then re-hydrate
-        useAuthStore.getState().resetLoadingState();
-        initialize();
-      }
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [initialize]);
-
-  console.log("[RequireAuth] Render:", {
-    isInitialized,
-    isLoading,
-    hasUser: !!user,
-  });
+  // NOTE: No manual visibility handler needed.
+  // Supabase v2 already listens to visibilitychange internally and refreshes
+  // the token automatically. onAuthStateChange handles TOKEN_REFRESHED,
+  // SIGNED_OUT, and TOKEN_REFRESH_FAILED — all cases are covered.
 
   // Still booting — show full-screen spinner
   if (!isInitialized) {

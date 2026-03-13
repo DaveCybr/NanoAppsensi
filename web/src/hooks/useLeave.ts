@@ -4,8 +4,6 @@ import {
   type LeaveRow, type LeaveFilters,
 } from '../lib/leaveService'
 import { useAuthStore } from '../stores/authStore'
-import { hasValidSession } from '../lib/sessionGuard'
-
 export function useLeave(filters: LeaveFilters = {}) {
   const tenantId = useAuthStore(s => s.tenant?.id)
   const userId   = useAuthStore(s => s.user?.id)
@@ -18,14 +16,15 @@ export function useLeave(filters: LeaveFilters = {}) {
 
   const load = useCallback(async (f: LeaveFilters) => {
     if (!tenantId) return
-    const valid = await hasValidSession()
-    if (!valid) return
     setIsLoading(true)
     setError(null)
-    const result = await getLeaveRequests(tenantId, f)
-    if (result.error) setError(result.error)
-    else { setRecords(result.data); setTotal(result.count) }
-    setIsLoading(false)
+    try {
+      const result = await getLeaveRequests(tenantId, f)
+      if (result.error) setError(result.error)
+      else { setRecords(result.data); setTotal(result.count) }
+    } finally {
+      setIsLoading(false)
+    }
   }, [tenantId])
 
   useEffect(() => { load(filters) }, [JSON.stringify(filters), load])

@@ -6,12 +6,19 @@ import type { ZoneRow } from '../../lib/zonesService'
 const STREET_TILE_URL  = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
 const SATELIT_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
 
+const DEFAULT_CENTER: [number, number] = [-8.2005, 113.6793]
+
 export default function ZonesPage() {
   const mapRef         = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<any>(null)
   const streetTileRef  = useRef<any>(null)
   const satelitTileRef = useRef<any>(null)
   const markersRef     = useRef<any[]>([])
+
+  const modalMapRef         = useRef<HTMLDivElement>(null)
+  const modalMapInstanceRef = useRef<any>(null)
+  const modalMarkerRef      = useRef<any>(null)
+  const modalCircleRef      = useRef<any>(null)
 
   const [search, setSearch]       = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -22,13 +29,15 @@ export default function ZonesPage() {
 
   const { zones, isLoading, error, isSaving, isDeleting, saveError, setSaveError, create, update, remove } = useZones()
 
-  // ── Init map ──
+  // ── Init overview map ──
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return
+    if (!mapRef.current) return
 
     import('leaflet').then(L => {
+      if (!mapRef.current || mapInstanceRef.current) return
+
       const map = L.map(mapRef.current!, {
-        center: [-8.2005, 113.6793],
+        center: DEFAULT_CENTER,
         zoom: 14,
         zoomControl: true,
       })
@@ -40,15 +49,6 @@ export default function ZonesPage() {
       streetTileRef.current  = street
       satelitTileRef.current = satelit
       mapInstanceRef.current = map
-
-      // Map click → auto-fill coordinates in form
-      map.on('click', (e: any) => {
-        setForm(prev => ({
-          ...prev,
-          latitude:  String(e.latlng.lat.toFixed(7)),
-          longitude: String(e.latlng.lng.toFixed(7)),
-        }))
-      })
     })
 
     return () => {
@@ -115,6 +115,88 @@ export default function ZonesPage() {
     })
   }, [zones])
 
+  // ── Init mini-map inside modal ──
+  useEffect(() => {
+    if (!showModal) return
+
+    // Wait one tick for the modal DOM to mount
+    const timer = setTimeout(() => {
+      if (!modalMapRef.current || modalMapInstanceRef.current) return
+
+      import('leaflet').then(L => {
+        if (!modalMapRef.current || modalMapInstanceRef.current) return
+
+        const lat = parseFloat(form.latitude)
+        const lng = parseFloat(form.longitude)
+        const center: [number, number] = (!isNaN(lat) && !isNaN(lng)) ? [lat, lng] : DEFAULT_CENTER
+
+        const map = L.map(modalMapRef.current!, { center, zoom: 15, zoomControl: true })
+        L.tileLayer(STREET_TILE_URL, { attribution: '© OpenStreetMap' }).addTo(map)
+
+        if (!isNaN(lat) && !isNaN(lng)) {
+          const radius = parseInt(form.radiusMeters) || 200
+          modalMarkerRef.current = L.marker([lat, lng]).addTo(map)
+          modalCircleRef.current = L.circle([lat, lng], {
+            color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 0.15,
+            weight: 2, radius,
+          }).addTo(map)
+        }
+
+        map.on('click', (e: any) => {
+          setForm(prev => ({
+            ...prev,
+            latitude:  String(e.latlng.lat.toFixed(7)),
+            longitude: String(e.latlng.lng.toFixed(7)),
+          }))
+        })
+
+        modalMapInstanceRef.current = map
+      })
+    }, 0)
+
+    return () => {
+      clearTimeout(timer)
+      if (modalMapInstanceRef.current) {
+        modalMapInstanceRef.current.remove()
+        modalMapInstanceRef.current = null
+        modalMarkerRef.current      = null
+        modalCircleRef.current      = null
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showModal])
+
+  // ── Update marker + circle in modal mini-map when coordinates/radius change ──
+  useEffect(() => {
+    const map = modalMapInstanceRef.current
+    if (!map) return
+
+    const lat    = parseFloat(form.latitude)
+    const lng    = parseFloat(form.longitude)
+    const radius = parseInt(form.radiusMeters) || 200
+    if (isNaN(lat) || isNaN(lng)) return
+
+    import('leaflet').then(L => {
+      if (modalMarkerRef.current) {
+        modalMarkerRef.current.setLatLng([lat, lng])
+      } else {
+        modalMarkerRef.current = L.marker([lat, lng]).addTo(map)
+      }
+
+      if (modalCircleRef.current) {
+        modalCircleRef.current.setLatLng([lat, lng])
+        modalCircleRef.current.setRadius(radius)
+      } else {
+        modalCircleRef.current = L.circle([lat, lng], {
+          color: '#2563eb', fillColor: '#3b82f6', fillOpacity: 0.15,
+          weight: 2, radius,
+        }).addTo(map)
+      }
+
+      map.setView([lat, lng], map.getZoom())
+    })
+  }, [form.latitude, form.longitude, form.radiusMeters])
+
   const filtered = zones.filter(z =>
     z.name.toLowerCase().includes(search.toLowerCase()) ||
     (z.address ?? '').toLowerCase().includes(search.toLowerCase())
@@ -160,8 +242,8 @@ export default function ZonesPage() {
         <button className="btn-secondary text-xs"><Download size={14} /> Download Report</button>
       </div>
 
-      {/* Map Card */}
-      <div className="card overflow-hidden">
+      {/* Overview Map Card */}
+      <div className="card overflow-hidden" style={{ isolation: 'isolate' }}>
         <div style={{ position: 'relative', display: 'inline-flex', margin: '12px 0 0 12px', zIndex: 20 }}
           className="rounded-lg overflow-hidden border border-gray-200 shadow-sm">
           {(['peta', 'satelit'] as const).map(l => (
@@ -173,9 +255,6 @@ export default function ZonesPage() {
           ))}
         </div>
         <div ref={mapRef} style={{ height: 300, width: '100%', marginTop: -40 }} />
-        <p className="text-xs text-blue-500 px-4 pb-3 pt-1">
-          📍 Klik pada peta saat modal terbuka untuk mengisi koordinat otomatis
-        </p>
       </div>
 
       {/* Zone Table */}
@@ -247,8 +326,8 @@ export default function ZonesPage() {
 
       {/* Add/Edit Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-dropdown w-full max-w-md p-6">
+        <div className="fixed inset-0 bg-black/40 z-[1000] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-dropdown w-full max-w-lg max-h-[90vh] overflow-y-auto p-6">
             <h3 className="text-base font-semibold text-gray-900 mb-4">
               {editZone ? 'Edit Zone' : 'Add Zone'}
             </h3>
@@ -259,9 +338,6 @@ export default function ZonesPage() {
               {[
                 { label: 'Office Name', key: 'officeName', placeholder: 'e.g. Kantor Pusat' },
                 { label: 'Office Address', key: 'officeAddress', placeholder: 'Alamat lengkap...' },
-                { label: 'Latitude', key: 'latitude', placeholder: 'e.g. -8.200565' },
-                { label: 'Longitude', key: 'longitude', placeholder: 'e.g. 113.6792966' },
-                { label: 'Radius (meters)', key: 'radiusMeters', placeholder: 'e.g. 200' },
               ].map(f => (
                 <div key={f.key}>
                   <label className="text-xs font-medium text-gray-600 mb-1 block">{f.label}</label>
@@ -273,10 +349,48 @@ export default function ZonesPage() {
                   />
                 </div>
               ))}
+
+              {/* Coordinate fields side by side */}
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { label: 'Latitude', key: 'latitude', placeholder: 'e.g. -8.200565' },
+                  { label: 'Longitude', key: 'longitude', placeholder: 'e.g. 113.6792966' },
+                ].map(f => (
+                  <div key={f.key}>
+                    <label className="text-xs font-medium text-gray-600 mb-1 block">{f.label}</label>
+                    <input
+                      value={form[f.key as keyof typeof form]}
+                      onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
+                      placeholder={f.placeholder}
+                      className="input text-sm font-mono"
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">Radius (meters)</label>
+                <input
+                  value={form.radiusMeters}
+                  onChange={e => setForm(prev => ({ ...prev, radiusMeters: e.target.value }))}
+                  placeholder="e.g. 200"
+                  className="input text-sm w-32"
+                />
+              </div>
+
+              {/* Mini-map for location picking */}
+              <div>
+                <label className="text-xs font-medium text-gray-600 mb-1 block">
+                  Pilih Lokasi <span className="font-normal text-gray-400">(klik pada peta)</span>
+                </label>
+                <div
+                  ref={modalMapRef}
+                  style={{ height: 220, width: '100%', borderRadius: 8, isolation: 'isolate' }}
+                  className="border border-gray-200 overflow-hidden"
+                />
+              </div>
             </div>
-            <div className="text-xs text-blue-600 mt-3 flex items-center gap-1">
-              <span>📍</span> Klik pada peta untuk mengisi koordinat otomatis
-            </div>
+
             <div className="flex gap-2 mt-5 justify-end">
               <button onClick={() => setShowModal(false)} className="btn-secondary text-xs">Cancel</button>
               <button onClick={handleSave} disabled={isSaving} className="btn-primary text-xs">
@@ -289,7 +403,7 @@ export default function ZonesPage() {
 
       {/* Confirm Delete */}
       {confirmId && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/40 z-[1000] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-dropdown w-full max-w-sm p-6">
             <h3 className="text-base font-semibold text-gray-900 mb-2">Hapus Zone?</h3>
             <p className="text-sm text-gray-500 mb-5">Data zona ini akan dihapus secara permanen.</p>
