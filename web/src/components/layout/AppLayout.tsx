@@ -68,47 +68,47 @@ const navigation: NavSection[] = [
       },
     ],
   },
-  {
-    label: "Manage",
-    items: [
-      {
-        id: "shifting",
-        label: "Shifting",
-        icon: <Layers size={16} />,
-        path: "/shifting",
-      },
-      {
-        id: "approval",
-        label: "Approval",
-        icon: <ClipboardList size={16} />,
-        path: "/approval",
-      },
-      {
-        id: "leave",
-        label: "Leave",
-        icon: <Calendar size={16} />,
-        path: "/leave",
-      },
-      {
-        id: "calendar",
-        label: "Calendar",
-        icon: <Calendar size={16} />,
-        path: "/calendar",
-      },
-      {
-        id: "newsfeed",
-        label: "News Feed",
-        icon: <Newspaper size={16} />,
-        path: "/newsfeed",
-      },
-      {
-        id: "audit",
-        label: "Audit Trail",
-        icon: <Shield size={16} />,
-        path: "/audit-trail",
-      },
-    ],
-  },
+  // {
+  //   label: "Manage",
+  //   items: [
+  //     {
+  //       id: "shifting",
+  //       label: "Shifting",
+  //       icon: <Layers size={16} />,
+  //       path: "/shifting",
+  //     },
+  //     {
+  //       id: "approval",
+  //       label: "Approval",
+  //       icon: <ClipboardList size={16} />,
+  //       path: "/approval",
+  //     },
+  //     {
+  //       id: "leave",
+  //       label: "Leave",
+  //       icon: <Calendar size={16} />,
+  //       path: "/leave",
+  //     },
+  //     {
+  //       id: "calendar",
+  //       label: "Calendar",
+  //       icon: <Calendar size={16} />,
+  //       path: "/calendar",
+  //     },
+  //     {
+  //       id: "newsfeed",
+  //       label: "News Feed",
+  //       icon: <Newspaper size={16} />,
+  //       path: "/newsfeed",
+  //     },
+  //     {
+  //       id: "audit",
+  //       label: "Audit Trail",
+  //       icon: <Shield size={16} />,
+  //       path: "/audit-trail",
+  //     },
+  //   ],
+  // },
   {
     label: "Settings",
     items: [

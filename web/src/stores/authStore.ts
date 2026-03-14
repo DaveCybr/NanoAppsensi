@@ -1,6 +1,6 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
-import type { User, Session, Subscription } from "@supabase/supabase-js"
+import type { User, Session } from "@supabase/supabase-js"
 import { supabase } from "../lib/supabase"
 import type { Tables } from "../types/database.types"
 
@@ -11,87 +11,81 @@ const ALLOWED_ROLES = ["superadmin", "hr_manager", "admin"] as const
 type AllowedRole = (typeof ALLOWED_ROLES)[number]
 
 interface AuthState {
-  user:          User | null
-  session:       Session | null
-  profile:       UserProfile | null
-  tenant:        TenantInfo | null
-  roleName:      string | null
-  isLoading:     boolean
-  isInitialized: boolean
-  error:         string | null
-
-  initialize:        () => Promise<void>
-  signIn:            (email: string, password: string) => Promise<void>
-  signOut:           () => Promise<void>
-  clearError:        () => void
-  resetLoadingState: () => void
+  user: User | null; session: Session | null; profile: UserProfile | null
+  tenant: TenantInfo | null; roleName: string | null
+  isLoading: boolean; isInitialized: boolean; error: string | null
+  initialize: () => Promise<void>
+  signIn: (email: string, password: string) => Promise<void>
+  signOut: () => Promise<void>
+  clearError: () => void; resetLoadingState: () => void
 }
 
-// ── Module-level singletons ────────────────────────────────────────────────────
-// Disimpan di luar store agar tidak ter-reset saat store di-recreate.
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// Guard: Promise yang sedang berjalan. Jika initialize() dipanggil lagi
-// saat masih berjalan (StrictMode double-invoke), return Promise yang sama —
-// tidak ada dua concurrent initialize().
-let initPromise: Promise<void> | null = null
+async function fetchProfile(userId: string): Promise<UserProfile | null> {
+  const { data, error } = await supabase.from("users").select("*").eq("id", userId).single()
+  if (error) { console.error("[Auth] fetchProfile:", error); return null }
+  return data
+}
 
-// Listener Supabase — disimpan agar bisa di-unsubscribe sebelum pasang baru
-let authSubscription: Subscription | null = null
-
-// ── Auth state listener ────────────────────────────────────────────────────────
-function setupAuthListener(set: (s: Partial<AuthState>) => void) {
-  // Unsubscribe listener lama sebelum pasang baru
-  if (authSubscription) {
-    authSubscription.unsubscribe()
-    authSubscription = null
+async function fetchTenant(user: User): Promise<TenantInfo | null> {
+  let tenantId = user.app_metadata?.tenant_id as string | undefined
+  if (!tenantId) {
+    const { data } = await supabase.from("users").select("tenant_id").eq("id", user.id).single()
+    tenantId = data?.tenant_id ?? undefined
   }
+  if (!tenantId) { console.warn("[Auth] tenant_id not found"); return null }
+  const { data, error } = await supabase.from("tenants").select("*").eq("id", tenantId).single()
+  if (error) { console.error("[Auth] fetchTenant:", error); return null }
+  return data
+}
 
-  const { data: { subscription } } = supabase.auth.onAuthStateChange(
-    async (event, session) => {
-      if (event === "SIGNED_IN" && session?.user) {
-        try {
-          const [profile, tenant, roleName] = await Promise.all([
-            fetchProfile(session.user.id),
-            fetchTenant(session.user),
-            fetchRoleName(session.user),
-          ])
-          set({ user: session.user, session, profile, tenant, roleName,
-            error: null, isInitialized: true, isLoading: false })
-        } catch {
-          set({ user: session.user, session, profile: null, tenant: null,
-            roleName: null, isInitialized: true, isLoading: false })
-        }
+async function fetchRoleName(user: User): Promise<string | null> {
+  const jwtRole = user.app_metadata?.role as string | undefined
+  if (jwtRole) return jwtRole
+  const { data } = await supabase.from("users").select("roles ( name )").eq("id", user.id).single()
+  return (data as any)?.roles?.name ?? null
+}
 
-      } else if (event === "TOKEN_REFRESHED" && session?.user) {
-        try {
-          const roleName      = await fetchRoleName(session.user)
-          const effectiveRole = (session.user.app_metadata?.role as string) ?? roleName ?? ""
-          if (!isAllowedRole(effectiveRole)) {
-            await supabase.auth.signOut()
-            set({ user: null, session: null, profile: null, tenant: null,
-              roleName: null, isInitialized: true, isLoading: false,
-              error: "Akses Anda telah dicabut. Silakan hubungi administrator." })
-            return
-          }
-          set({ session, user: session.user, roleName: effectiveRole })
-        } catch {
-          set({ session, user: session.user })
-        }
+function isAllowedRole(role: string): boolean {
+  const n = role.toLowerCase().replace(/\s+/g, "_")
+  return ALLOWED_ROLES.includes(n as AllowedRole) || ALLOWED_ROLES.includes(role as AllowedRole)
+}
 
-      } else if (
-        event === "SIGNED_OUT" ||
-        (!session && (event as string) === "TOKEN_REFRESH_FAILED")
-      ) {
-        set({ user: null, session: null, profile: null, tenant: null,
-          roleName: null, isInitialized: true, isLoading: false })
+function translateAuthError(msg: string): string {
+  if (msg.includes("Invalid login credentials")) return "Email atau password salah."
+  if (msg.includes("Email not confirmed")) return "Email belum diverifikasi. Cek inbox kamu."
+  if (msg.includes("Too many requests")) return "Terlalu banyak percobaan. Coba lagi nanti."
+  if (msg.includes("Akses ditolak") || msg.includes("Akses Anda")) return msg
+  return msg
+}
+
+// ── Baca session dari localStorage tanpa memanggil getSession() ───────────────
+// getSession() bisa hang karena internal lock di GoTrueClient.
+// localStorage berisi session yang sama, bisa dibaca synchronous.
+function readSessionFromStorage(): Session | null {
+  try {
+    // Supabase menyimpan session dengan key: sb-{projectRef}-auth-token
+    const keys = Object.keys(localStorage).filter(k =>
+      k.startsWith('sb-') && k.endsWith('-auth-token')
+    )
+    for (const key of keys) {
+      const raw = localStorage.getItem(key)
+      if (!raw) continue
+      const parsed = JSON.parse(raw)
+      // Format Supabase v2: { access_token, refresh_token, user, expires_at, ... }
+      if (parsed?.access_token && parsed?.user) {
+        return parsed as Session
       }
     }
-  )
-
-  authSubscription = subscription
+    return null
+  } catch {
+    return null
+  }
 }
 
 // ── Store ─────────────────────────────────────────────────────────────────────
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set, _get) => ({
@@ -99,54 +93,76 @@ export const useAuthStore = create<AuthState>()(
       isLoading: false, isInitialized: false, error: null,
 
       initialize: async () => {
-        // KUNCI FIX: Jika initialize() sudah berjalan atau sudah selesai,
-        // return Promise yang sama — tidak ada eksekusi kedua.
-        // Ini yang mencegah React StrictMode double-invoke dari menyebabkan
-        // dua concurrent getSession() yang saling interfere.
-        if (initPromise) return initPromise
-
-        initPromise = (async () => {
-          set({ isLoading: true })
-
-          // Pasang listener SEBELUM getSession() agar tidak ada event terlewat
-          setupAuthListener(s => set(s as Partial<AuthState>))
-
-          try {
-            const { data: { session }, error } = await supabase.auth.getSession()
-
-            if (error) {
-              console.warn("[Auth] getSession error:", error.message)
-              set({ isInitialized: true, isLoading: false, user: null, session: null })
-              return
-            }
-
-            if (!session) {
-              set({ isInitialized: true, isLoading: false, user: null, session: null })
-              return
-            }
-
-            // Ada session — fetch data tambahan
-            const [profile, tenant, roleName] = await Promise.all([
-              fetchProfile(session.user.id),
-              fetchTenant(session.user),
-              fetchRoleName(session.user),
-            ]).catch(err => {
-              console.warn("[Auth] Failed to fetch profile/tenant:", err)
-              return [null, null, null] as const
+        const state = useAuthStore.getState()
+        if (state.isInitialized) return
+        if (state.isLoading) {
+          await new Promise<void>(resolve => {
+            const unsub = useAuthStore.subscribe(s => {
+              if (s.isInitialized) { unsub(); resolve() }
             })
+          })
+          return
+        }
 
-            set({
-              user: session.user, session, profile, tenant, roleName,
-              isInitialized: true, isLoading: false, error: null,
-            })
+        set({ isLoading: true })
 
-          } catch (err) {
-            console.error("[Auth] Initialize failed:", err)
+        try {
+          // FIX: Baca session dari localStorage — tidak pakai getSession()
+          // yang bisa hang karena GoTrueClient internal lock setelah idle.
+          const session = readSessionFromStorage()
+
+          if (!session) {
             set({ isInitialized: true, isLoading: false, user: null, session: null })
+            return
           }
-        })()
 
-        return initPromise
+          // Cek apakah token sudah expired
+          const nowSeconds = Math.floor(Date.now() / 1000)
+          const expiresAt  = (session as any).expires_at ?? 0
+
+          if (expiresAt > 0 && expiresAt < nowSeconds) {
+            // Token expired — coba refresh dengan timeout
+            const refreshed = await Promise.race([
+              supabase.auth.refreshSession().then(({ data, error }) => {
+                if (!error && data.session) return data.session
+                return null
+              }),
+              new Promise<null>(resolve => setTimeout(() => resolve(null), 8_000)),
+            ])
+
+            if (!refreshed) {
+              // Refresh gagal/timeout → tidak ada session valid
+              set({ isInitialized: true, isLoading: false, user: null, session: null })
+              return
+            }
+
+            // Pakai session yang sudah di-refresh
+            const user = refreshed.user
+            const [profile, tenant, roleName] = await Promise.all([
+              fetchProfile(user.id), fetchTenant(user), fetchRoleName(user),
+            ]).catch(() => [null, null, null] as const)
+
+            set({ user, session: refreshed, profile, tenant, roleName,
+              isInitialized: true, isLoading: false, error: null })
+            return
+          }
+
+          // Token masih valid — fetch profile/tenant
+          const user = session.user
+          const [profile, tenant, roleName] = await Promise.all([
+            fetchProfile(user.id), fetchTenant(user), fetchRoleName(user),
+          ]).catch(err => {
+            console.warn("[Auth] Failed to fetch profile/tenant:", err)
+            return [null, null, null] as const
+          })
+
+          set({ user, session, profile, tenant, roleName,
+            isInitialized: true, isLoading: false, error: null })
+
+        } catch (err) {
+          console.error("[Auth] Initialize failed:", err)
+          set({ isInitialized: true, isLoading: false, user: null, session: null })
+        }
       },
 
       signIn: async (email, password) => {
@@ -154,24 +170,15 @@ export const useAuthStore = create<AuthState>()(
         try {
           const { data, error } = await supabase.auth.signInWithPassword({ email, password })
           if (error) throw error
-
           if (data.user) {
             const [profile, tenant, roleName] = await Promise.all([
-              fetchProfile(data.user.id),
-              fetchTenant(data.user),
-              fetchRoleName(data.user),
+              fetchProfile(data.user.id), fetchTenant(data.user), fetchRoleName(data.user),
             ])
-            const jwtRole       = data.user.app_metadata?.role as string | undefined
-            const effectiveRole = jwtRole ?? roleName ?? ""
-
+            const effectiveRole = (data.user.app_metadata?.role as string) ?? roleName ?? ""
             if (!isAllowedRole(effectiveRole)) {
               await supabase.auth.signOut()
-              throw new Error(
-                `Akses ditolak. Role "${effectiveRole || "staff"}" tidak memiliki akses ke panel admin. ` +
-                `Hanya ${ALLOWED_ROLES.join(", ")} yang diizinkan.`
-              )
+              throw new Error(`Akses ditolak. Role "${effectiveRole || "staff"}" tidak memiliki akses ke panel admin.`)
             }
-
             set({ user: data.user, session: data.session, profile, tenant,
               roleName: effectiveRole, error: null })
           }
@@ -185,77 +192,42 @@ export const useAuthStore = create<AuthState>()(
       },
 
       signOut: async () => {
-        // Reset guard agar initialize() bisa dipanggil lagi setelah login ulang
-        initPromise = null
         set({ isLoading: true })
-        try {
-          await supabase.auth.signOut({ scope: "global" })
-        } catch (err) {
-          console.error("[Auth] Signout error:", err)
-        } finally {
+        try { await supabase.auth.signOut({ scope: "global" }) }
+        catch (err) { console.error("[Auth] Signout error:", err) }
+        finally {
           set({ user: null, session: null, profile: null, tenant: null,
-            roleName: null, error: null, isLoading: false })
+            roleName: null, error: null, isLoading: false, isInitialized: false })
         }
       },
 
-      clearError:        () => set({ error: null }),
+      clearError: () => set({ error: null }),
       resetLoadingState: () => set({ isLoading: false }),
     }),
-    {
-      name:       "tefa-auth",
-      partialize: () => ({}), // tidak persist apapun ke localStorage
-    },
+    { name: "tefa-auth", partialize: () => ({}) },
   ),
 )
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Auth state listener — dipasang sekali di module level ─────────────────────
+supabase.auth.onAuthStateChange(async (event, session) => {
+  if (!useAuthStore.getState().isInitialized) return
 
-async function fetchProfile(userId: string): Promise<UserProfile | null> {
-  const { data, error } = await supabase
-    .from("users").select("*").eq("id", userId).single()
-  if (error) { console.error("[Auth] fetchProfile:", error); return null }
-  return data
-}
+  if (event === "SIGNED_IN" && session?.user) {
+    try {
+      const [profile, tenant, roleName] = await Promise.all([
+        fetchProfile(session.user.id), fetchTenant(session.user), fetchRoleName(session.user),
+      ])
+      useAuthStore.setState({ user: session.user, session, profile, tenant, roleName, error: null })
+    } catch {
+      useAuthStore.setState({ user: session.user, session })
+    }
 
-async function fetchTenant(user: User): Promise<TenantInfo | null> {
-  let tenantId = user.app_metadata?.tenant_id as string | undefined
+  } else if (event === "TOKEN_REFRESHED" && session?.user) {
+    // Update session di store dengan token baru
+    useAuthStore.setState({ session, user: session.user })
 
-  if (!tenantId) {
-    const { data } = await supabase
-      .from("users").select("tenant_id").eq("id", user.id).single()
-    tenantId = data?.tenant_id ?? undefined
+  } else if (event === "SIGNED_OUT" || (!session && (event as string) === "TOKEN_REFRESH_FAILED")) {
+    useAuthStore.setState({ user: null, session: null, profile: null, tenant: null,
+      roleName: null, isInitialized: true, isLoading: false })
   }
-
-  if (!tenantId) { console.warn("[Auth] tenant_id not found"); return null }
-
-  const { data, error } = await supabase
-    .from("tenants").select("*").eq("id", tenantId).single()
-  if (error) { console.error("[Auth] fetchTenant:", error); return null }
-  return data
-}
-
-async function fetchRoleName(user: User): Promise<string | null> {
-  const jwtRole = user.app_metadata?.role as string | undefined
-  if (jwtRole) return jwtRole
-
-  const { data } = await supabase
-    .from("users").select("roles ( name )").eq("id", user.id).single()
-  return (data as any)?.roles?.name ?? null
-}
-
-function isAllowedRole(role: string): boolean {
-  const normalized = role.toLowerCase().replace(/\s+/g, "_")
-  return (
-    ALLOWED_ROLES.includes(normalized as AllowedRole) ||
-    ALLOWED_ROLES.includes(role as AllowedRole)
-  )
-}
-
-function translateAuthError(msg: string): string {
-  if (msg.includes("Invalid login credentials"))  return "Email atau password salah."
-  if (msg.includes("Email not confirmed"))         return "Email belum diverifikasi. Cek inbox kamu."
-  if (msg.includes("Too many requests"))           return "Terlalu banyak percobaan. Coba lagi nanti."
-  if (msg.includes("Error running hook URI"))      return "Konfigurasi auth hook bermasalah."
-  if (msg.includes("Akses ditolak") || msg.includes("Akses Anda")) return msg
-  return msg
-}
+})
