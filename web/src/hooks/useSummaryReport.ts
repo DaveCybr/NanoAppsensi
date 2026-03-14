@@ -6,47 +6,40 @@ import {
   type SummaryStats, type ChartPoint,
   type DepartmentOption, type EmployeeOption,
 } from '../lib/summaryReportService'
+import { ensureValidSession } from '../lib/sessionGuard'
 import { useAuthStore } from '../stores/authStore'
-// ── today string ──────────────────────────────────────────────────────────────
-function today() {
-  return new Date().toISOString().slice(0, 10)
-}
 
-// ── Default stats ──────────────────────────────────────────────────────────────
+function today() { return new Date().toISOString().slice(0, 10) }
+
 const EMPTY_STATS: SummaryStats = {
   total_present: 0, total_absent: 0, total_late: 0, total_early_out: 0,
   total_wfh: 0, in_area: 0, out_of_area: 0, total_records: 0,
 }
 
-// ─── Main hook ────────────────────────────────────────────────────────────────
 export function useSummaryReport() {
   const tenantId = useAuthStore(s => s.tenant?.id)
 
-  // ── Filter state ──────────────────────────────────────────────────────────
   const [filters, setFiltersState] = useState<AttendanceFilters>({
-    startDate:  today(),
-    endDate:    today(),
-    page:       1,
-    perPage:    15,
+    startDate: today(), endDate: today(), page: 1, perPage: 15,
   })
 
-  // ── Data state ────────────────────────────────────────────────────────────
-  const [rows,       setRows]       = useState<AttendanceRow[]>([])
-  const [totalCount, setTotalCount] = useState(0)
-  const [stats,      setStats]      = useState<SummaryStats>(EMPTY_STATS)
-  const [chart,      setChart]      = useState<ChartPoint[]>([])
+  const [rows,        setRows]        = useState<AttendanceRow[]>([])
+  const [totalCount,  setTotalCount]  = useState(0)
+  const [stats,       setStats]       = useState<SummaryStats>(EMPTY_STATS)
+  const [chart,       setChart]       = useState<ChartPoint[]>([])
   const [departments, setDepartments] = useState<DepartmentOption[]>([])
   const [employees,   setEmployees]   = useState<EmployeeOption[]>([])
 
-  // ── Loading / error ────────────────────────────────────────────────────────
   const [isLoadingRows,  setIsLoadingRows]  = useState(false)
   const [isLoadingStats, setIsLoadingStats] = useState(false)
   const [isLoadingChart, setIsLoadingChart] = useState(false)
-  const [error,          setError]          = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const filterOptionsLoaded = useRef(false)
+  const rowsAbortRef = useRef<AbortController | null>(null)
+  const aggAbortRef  = useRef<AbortController | null>(null)
 
-  // ── Load filter options once ───────────────────────────────────────────────
+  // Load filter options sekali
   useEffect(() => {
     if (!tenantId || filterOptionsLoaded.current) return
     filterOptionsLoaded.current = true
@@ -56,84 +49,87 @@ export function useSummaryReport() {
     })
   }, [tenantId])
 
-  // ── Load table rows ────────────────────────────────────────────────────────
   const loadRows = useCallback(async (f: AttendanceFilters) => {
     if (!tenantId) return
+    rowsAbortRef.current?.abort()
+    const controller = new AbortController()
+    rowsAbortRef.current = controller
+    const { signal } = controller
+
     setIsLoadingRows(true)
     setError(null)
     try {
+      const valid = await ensureValidSession()
+      if (signal.aborted) return
+      if (!valid) { setError('Sesi telah berakhir. Silakan refresh halaman.'); return }
+
       const { data, count, error } = await getAttendanceReport(tenantId, f)
+      if (signal.aborted) return
       if (error) setError(error)
       else { setRows(data); setTotalCount(count) }
     } finally {
-      setIsLoadingRows(false)
+      if (!signal.aborted) setIsLoadingRows(false)
     }
   }, [tenantId])
 
-  // ── Load stats + chart (only when date/dept filter changes) ───────────────
   const loadAggregates = useCallback(async (f: AttendanceFilters) => {
     if (!tenantId) return
+    aggAbortRef.current?.abort()
+    const controller = new AbortController()
+    aggAbortRef.current = controller
+    const { signal } = controller
+
     setIsLoadingStats(true)
     setIsLoadingChart(true)
+    try {
+      const valid = await ensureValidSession()
+      if (signal.aborted) return
+      if (!valid) { setIsLoadingStats(false); setIsLoadingChart(false); return }
 
-    const [statsRes, chartRes] = await Promise.all([
-      getAttendanceStats(tenantId, f.startDate, f.endDate, f.departmentId),
-      getAttendanceChart(tenantId, f.startDate, f.endDate),
-    ])
-
-    if (statsRes.error) setError(statsRes.error)
-    else setStats(statsRes.data)
-    setIsLoadingStats(false)
-
-    if (!chartRes.error) setChart(chartRes.data)
-    setIsLoadingChart(false)
+      const [statsRes, chartRes] = await Promise.all([
+        getAttendanceStats(tenantId, f.startDate, f.endDate, f.departmentId),
+        getAttendanceChart(tenantId, f.startDate, f.endDate),
+      ])
+      if (signal.aborted) return
+      if (statsRes.error) setError(statsRes.error)
+      else setStats(statsRes.data)
+      if (!chartRes.error) setChart(chartRes.data)
+    } finally {
+      if (!signal.aborted) { setIsLoadingStats(false); setIsLoadingChart(false) }
+    }
   }, [tenantId])
 
-  // ── Trigger on filter change ───────────────────────────────────────────────
   useEffect(() => {
     loadRows(filters)
+    return () => { rowsAbortRef.current?.abort() }
   }, [filters, loadRows])
 
-  // Aggregates only re-fetch when date/dept changes (not page/employee)
-  const prevAggKey = useRef('')
+  // Aggregates hanya re-fetch saat date/dept berubah, bukan saat page berubah
   useEffect(() => {
-    const key = `${filters.startDate}|${filters.endDate}|${filters.departmentId ?? ''}`
-    if (key === prevAggKey.current) return
-    prevAggKey.current = key
     loadAggregates(filters)
-  }, [filters, loadAggregates])
+    return () => { aggAbortRef.current?.abort() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.startDate, filters.endDate, filters.departmentId, loadAggregates])
 
-  // ── Public helpers ─────────────────────────────────────────────────────────
-  const setFilters = (patch: Partial<AttendanceFilters>) => {
+  const setFilters = (patch: Partial<AttendanceFilters>) =>
     setFiltersState(prev => ({ ...prev, ...patch }))
-  }
 
-  const search = (patch: Partial<AttendanceFilters>) => {
+  const search = (patch: Partial<AttendanceFilters>) =>
     setFiltersState(prev => ({ ...prev, ...patch, page: 1 }))
-  }
 
-  const refetch = () => {
+  const refetch = useCallback(() => {
     loadRows(filters)
     loadAggregates(filters)
-  }
+  }, [filters, loadRows, loadAggregates])
 
-  const exportCSV = () => {
-    // Export current page rows; for full export could fetch all pages
-    const label = `absensi_${filters.startDate}_${filters.endDate}`
-    exportAttendanceCSV(rows, label)
-  }
-
-  const isLoading = isLoadingRows || isLoadingStats
+  const exportCSV = () =>
+    exportAttendanceCSV(rows, `absensi_${filters.startDate}_${filters.endDate}`)
 
   return {
-    // Data
-    rows, totalCount, stats, chart,
-    departments, employees,
-    // Filters
+    rows, totalCount, stats, chart, departments, employees,
     filters, setFilters, search,
-    // State
-    isLoading, isLoadingRows, isLoadingStats, isLoadingChart, error,
-    // Actions
+    isLoading: isLoadingRows || isLoadingStats,
+    isLoadingRows, isLoadingStats, isLoadingChart, error,
     refetch, exportCSV,
   }
 }

@@ -4,14 +4,14 @@ import { useAuthStore } from '../stores/authStore'
 import { supabase } from '../lib/supabase'
 
 export function useCompany() {
-  const tenantId  = useAuthStore(s => s.tenant?.id)
-  const tenant    = useAuthStore(s => s.tenant)
+  const tenantId = useAuthStore(s => s.tenant?.id)
+  const tenant   = useAuthStore(s => s.tenant)
 
-  const [isSaving,     setIsSaving]     = useState(false)
-  const [isUploading,  setIsUploading]  = useState(false)
-  const [saveError,    setSaveError]    = useState<string | null>(null)
-  const [uploadError,  setUploadError]  = useState<string | null>(null)
-  const [successMsg,   setSuccessMsg]   = useState<string | null>(null)
+  const [isSaving,    setIsSaving]    = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [saveError,   setSaveError]   = useState<string | null>(null)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [successMsg,  setSuccessMsg]  = useState<string | null>(null)
 
   const save = async (form: CompanyFormData) => {
     if (!tenantId) return { error: 'Tenant tidak ditemukan' }
@@ -20,7 +20,6 @@ export function useCompany() {
     setIsSaving(false)
     if (error) { setSaveError(error); return { error } }
 
-    // Refresh tenant in auth store
     const { data } = await supabase.from('tenants').select('*').eq('id', tenantId).single()
     if (data) useAuthStore.setState({ tenant: data })
 
@@ -34,10 +33,7 @@ export function useCompany() {
     const { url, error } = await uploadLogo(tenantId, file)
     if (error) { setUploadError(error); setIsUploading(false); return { url: null, error } }
 
-    // Save logo_url to tenant
     await updateTenantLogo(tenantId, url!)
-
-    // Refresh tenant in auth store
     const { data } = await supabase.from('tenants').select('*').eq('id', tenantId).single()
     if (data) useAuthStore.setState({ tenant: data })
 

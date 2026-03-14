@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   getPositionList, createPosition, updatePosition, deletePosition,
   getGradeList, createGrade, updateGrade, deleteGrade,
   getEmploymentStatusList, createEmploymentStatus, updateEmploymentStatus, deleteEmploymentStatus,
   type PositionRow, type GradeRow, type EmploymentStatusRow,
 } from '../lib/hierarchyService'
+import { ensureValidSession } from '../lib/sessionGuard'
 import { useAuthStore } from '../stores/authStore'
 
 // ─── usePositionList ──────────────────────────────────────────────────────────
@@ -13,27 +14,37 @@ export function usePositionList() {
   const [positions, setPositions] = useState<PositionRow[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const load = useCallback(async () => {
     if (!tenantId) return
-    setIsLoading(true)
-    setError(null)
-    const { data, error } = await getPositionList(tenantId)
-    if (error) setError(error)
-    else setPositions(data)
-    setIsLoading(false)
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const { signal } = controller
+    setIsLoading(true); setError(null)
+    try {
+      const valid = await ensureValidSession()
+      if (signal.aborted) return
+      if (!valid) return
+      const { data, error } = await getPositionList(tenantId)
+      if (signal.aborted) return
+      if (error) setError(error)
+      else setPositions(data)
+    } finally {
+      if (!signal.aborted) setIsLoading(false)
+    }
   }, [tenantId])
 
-  useEffect(() => { load() }, [load])
-
+  useEffect(() => { load(); return () => { abortRef.current?.abort() } }, [load])
   return { positions, isLoading, error, refetch: load }
 }
 
 export function usePositionMutations(onSuccess?: () => void) {
+  const tenantId = useAuthStore(s => s.tenant?.id)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const tenantId = useAuthStore(s => s.tenant?.id)
 
   const create = async (name: string) => {
     if (!tenantId) return { error: 'Tenant tidak ditemukan' }
@@ -41,19 +52,15 @@ export function usePositionMutations(onSuccess?: () => void) {
     const { error } = await createPosition(tenantId, name)
     setIsSaving(false)
     if (error) { setSaveError(error); return { error } }
-    onSuccess?.()
-    return { error: null }
+    onSuccess?.(); return { error: null }
   }
-
   const update = async (id: string, name: string) => {
     setIsSaving(true); setSaveError(null)
     const { error } = await updatePosition(id, name)
     setIsSaving(false)
     if (error) { setSaveError(error); return { error } }
-    onSuccess?.()
-    return { error: null }
+    onSuccess?.(); return { error: null }
   }
-
   const remove = async (id: string) => {
     setIsDeleting(true)
     const { error } = await deletePosition(id)
@@ -61,7 +68,6 @@ export function usePositionMutations(onSuccess?: () => void) {
     if (!error) onSuccess?.()
     return { error }
   }
-
   return { create, update, remove, isSaving, isDeleting, saveError, setSaveError }
 }
 
@@ -71,27 +77,37 @@ export function useGradeList() {
   const [grades, setGrades] = useState<GradeRow[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const load = useCallback(async () => {
     if (!tenantId) return
-    setIsLoading(true)
-    setError(null)
-    const { data, error } = await getGradeList(tenantId)
-    if (error) setError(error)
-    else setGrades(data)
-    setIsLoading(false)
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const { signal } = controller
+    setIsLoading(true); setError(null)
+    try {
+      const valid = await ensureValidSession()
+      if (signal.aborted) return
+      if (!valid) return
+      const { data, error } = await getGradeList(tenantId)
+      if (signal.aborted) return
+      if (error) setError(error)
+      else setGrades(data)
+    } finally {
+      if (!signal.aborted) setIsLoading(false)
+    }
   }, [tenantId])
 
-  useEffect(() => { load() }, [load])
-
+  useEffect(() => { load(); return () => { abortRef.current?.abort() } }, [load])
   return { grades, isLoading, error, refetch: load }
 }
 
 export function useGradeMutations(onSuccess?: () => void) {
+  const tenantId = useAuthStore(s => s.tenant?.id)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const tenantId = useAuthStore(s => s.tenant?.id)
 
   const create = async (code: string, name: string) => {
     if (!tenantId) return { error: 'Tenant tidak ditemukan' }
@@ -99,19 +115,15 @@ export function useGradeMutations(onSuccess?: () => void) {
     const { error } = await createGrade(tenantId, code, name)
     setIsSaving(false)
     if (error) { setSaveError(error); return { error } }
-    onSuccess?.()
-    return { error: null }
+    onSuccess?.(); return { error: null }
   }
-
   const update = async (id: string, code: string, name: string) => {
     setIsSaving(true); setSaveError(null)
     const { error } = await updateGrade(id, code, name)
     setIsSaving(false)
     if (error) { setSaveError(error); return { error } }
-    onSuccess?.()
-    return { error: null }
+    onSuccess?.(); return { error: null }
   }
-
   const remove = async (id: string) => {
     setIsDeleting(true)
     const { error } = await deleteGrade(id)
@@ -119,7 +131,6 @@ export function useGradeMutations(onSuccess?: () => void) {
     if (!error) onSuccess?.()
     return { error }
   }
-
   return { create, update, remove, isSaving, isDeleting, saveError, setSaveError }
 }
 
@@ -129,27 +140,37 @@ export function useEmploymentStatusList() {
   const [statuses, setStatuses] = useState<EmploymentStatusRow[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const load = useCallback(async () => {
     if (!tenantId) return
-    setIsLoading(true)
-    setError(null)
-    const { data, error } = await getEmploymentStatusList(tenantId)
-    if (error) setError(error)
-    else setStatuses(data)
-    setIsLoading(false)
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const { signal } = controller
+    setIsLoading(true); setError(null)
+    try {
+      const valid = await ensureValidSession()
+      if (signal.aborted) return
+      if (!valid) return
+      const { data, error } = await getEmploymentStatusList(tenantId)
+      if (signal.aborted) return
+      if (error) setError(error)
+      else setStatuses(data)
+    } finally {
+      if (!signal.aborted) setIsLoading(false)
+    }
   }, [tenantId])
 
-  useEffect(() => { load() }, [load])
-
+  useEffect(() => { load(); return () => { abortRef.current?.abort() } }, [load])
   return { statuses, isLoading, error, refetch: load }
 }
 
 export function useEmploymentStatusMutations(onSuccess?: () => void) {
+  const tenantId = useAuthStore(s => s.tenant?.id)
   const [isSaving, setIsSaving] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
-  const tenantId = useAuthStore(s => s.tenant?.id)
 
   const create = async (code: string, name: string) => {
     if (!tenantId) return { error: 'Tenant tidak ditemukan' }
@@ -157,19 +178,15 @@ export function useEmploymentStatusMutations(onSuccess?: () => void) {
     const { error } = await createEmploymentStatus(tenantId, code, name)
     setIsSaving(false)
     if (error) { setSaveError(error); return { error } }
-    onSuccess?.()
-    return { error: null }
+    onSuccess?.(); return { error: null }
   }
-
   const update = async (id: string, code: string, name: string) => {
     setIsSaving(true); setSaveError(null)
     const { error } = await updateEmploymentStatus(id, code, name)
     setIsSaving(false)
     if (error) { setSaveError(error); return { error } }
-    onSuccess?.()
-    return { error: null }
+    onSuccess?.(); return { error: null }
   }
-
   const remove = async (id: string) => {
     setIsDeleting(true)
     const { error } = await deleteEmploymentStatus(id)
@@ -177,6 +194,5 @@ export function useEmploymentStatusMutations(onSuccess?: () => void) {
     if (!error) onSuccess?.()
     return { error }
   }
-
   return { create, update, remove, isSaving, isDeleting, saveError, setSaveError }
 }

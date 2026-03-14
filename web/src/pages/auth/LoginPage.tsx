@@ -1,31 +1,31 @@
-import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react'
-import { useAuthStore } from '../../stores/authStore'
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { useAuthStore } from "../../stores/authStore";
 
 export default function LoginPage() {
-  const navigate  = useNavigate()
-  const { signIn, isLoading, error, clearError, user } = useAuthStore()
+  const navigate = useNavigate();
+  const { signIn, isLoading, error, clearError, user } = useAuthStore();
 
-  const [email,    setEmail]    = useState('')
-  const [password, setPassword] = useState('')
-  const [showPwd,  setShowPwd]  = useState(false)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPwd, setShowPwd] = useState(false);
 
   // Redirect if already logged in
   useEffect(() => {
-    if (user) navigate('/summary-report', { replace: true })
-  }, [user, navigate])
+    if (user) navigate("/summary-report", { replace: true });
+  }, [user, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    clearError()
+    e.preventDefault();
+    clearError();
     try {
-      await signIn(email, password)
-      navigate('/summary-report', { replace: true })
+      await signIn(email, password);
+      navigate("/summary-report", { replace: true });
     } catch {
       // error already set in store
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center p-4">
@@ -43,7 +43,7 @@ export default function LoginPage() {
             <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center mb-3 shadow-md">
               <span className="text-white font-bold text-xl">T</span>
             </div>
-            <h1 className="text-xl font-bold text-gray-900">TEFA Presensi</h1>
+            <h1 className="text-xl font-bold text-gray-900">NANO Presensi</h1>
             <p className="text-sm text-gray-400 mt-0.5">Admin Panel</p>
           </div>
 
@@ -64,7 +64,10 @@ export default function LoginPage() {
               <input
                 type="email"
                 value={email}
-                onChange={e => { clearError(); setEmail(e.target.value) }}
+                onChange={(e) => {
+                  clearError();
+                  setEmail(e.target.value);
+                }}
                 placeholder="admin@nano.co.id"
                 required
                 autoComplete="email"
@@ -78,9 +81,12 @@ export default function LoginPage() {
               </label>
               <div className="relative">
                 <input
-                  type={showPwd ? 'text' : 'password'}
+                  type={showPwd ? "text" : "password"}
                   value={password}
-                  onChange={e => { clearError(); setPassword(e.target.value) }}
+                  onChange={(e) => {
+                    clearError();
+                    setPassword(e.target.value);
+                  }}
                   placeholder="••••••••"
                   required
                   autoComplete="current-password"
@@ -88,7 +94,7 @@ export default function LoginPage() {
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPwd(v => !v)}
+                  onClick={() => setShowPwd((v) => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   tabIndex={-1}
                 >
@@ -99,10 +105,16 @@ export default function LoginPage() {
 
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" className="rounded border-gray-300 text-blue-600 w-3.5 h-3.5" />
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-blue-600 w-3.5 h-3.5"
+                />
                 <span className="text-xs text-gray-500">Remember me</span>
               </label>
-              <button type="button" className="text-xs text-blue-600 hover:underline font-medium">
+              <button
+                type="button"
+                className="text-xs text-blue-600 hover:underline font-medium"
+              >
                 Lupa password?
               </button>
             </div>
@@ -117,7 +129,9 @@ export default function LoginPage() {
                   <Loader2 size={15} className="animate-spin" />
                   Masuk...
                 </>
-              ) : 'Masuk'}
+              ) : (
+                "Masuk"
+              )}
             </button>
           </form>
 
@@ -135,5 +149,5 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
-  )
+  );
 }

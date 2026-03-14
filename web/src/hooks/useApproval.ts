@@ -1,32 +1,42 @@
-import { useState, useEffect, useCallback } from 'react'
-import {
-  getCorrectionRequests, approveCorrection, rejectCorrection,
-  type CorrectionRow, type ApprovalFilters,
-} from '../lib/approvalService'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { getCorrectionRequests, approveCorrection, rejectCorrection, type CorrectionRow, type ApprovalFilters } from '../lib/approvalService'
+import { ensureValidSession } from '../lib/sessionGuard'
 import { useAuthStore } from '../stores/authStore'
+
 export function useApproval(filters: ApprovalFilters = {}) {
   const tenantId = useAuthStore(s => s.tenant?.id)
   const userId   = useAuthStore(s => s.user?.id)
-
-  const [records, setRecords]     = useState<CorrectionRow[]>([])
-  const [totalCount, setTotal]    = useState(0)
+  const [records, setRecords] = useState<CorrectionRow[]>([])
+  const [totalCount, setTotal] = useState(0)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError]         = useState<string | null>(null)
-  const [isActing, setIsActing]   = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [isActing, setIsActing] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   const load = useCallback(async (f: ApprovalFilters) => {
     if (!tenantId) return
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const { signal } = controller
     setIsLoading(true); setError(null)
     try {
+      const valid = await ensureValidSession()
+      if (signal.aborted) return
+      if (!valid) { setError('Sesi telah berakhir. Silakan refresh halaman.'); return }
       const result = await getCorrectionRequests(tenantId, f)
+      if (signal.aborted) return
       if (result.error) setError(result.error)
       else { setRecords(result.data); setTotal(result.count) }
     } finally {
-      setIsLoading(false)
+      if (!signal.aborted) setIsLoading(false)
     }
   }, [tenantId])
 
-  useEffect(() => { load(filters) }, [JSON.stringify(filters), load])
+  useEffect(() => {
+    load(filters)
+    return () => { abortRef.current?.abort() }
+  }, [filters.status, filters.search, filters.page, filters.perPage, load])
 
   const approve = async (id: string) => {
     if (!userId) return
@@ -46,5 +56,6 @@ export function useApproval(filters: ApprovalFilters = {}) {
     return { error }
   }
 
-  return { records, totalCount, isLoading, error, isActing, approve, reject, refetch: () => load(filters) }
+  return { records, totalCount, isLoading, error, isActing, approve, reject,
+    refetch: useCallback(() => load(filters), [load, filters]) }
 }

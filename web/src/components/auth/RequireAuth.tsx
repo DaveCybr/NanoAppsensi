@@ -1,32 +1,20 @@
-import { useEffect } from "react";
-import { Navigate, useLocation } from "react-router-dom";
-import { Loader2 } from "lucide-react";
-import { useAuthStore } from "../../stores/authStore";
+import { useEffect } from "react"
+import { Navigate, useLocation } from "react-router-dom"
+import { Loader2 } from "lucide-react"
+import { useAuthStore } from "../../stores/authStore"
 
-export default function RequireAuth({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const user          = useAuthStore((s) => s.user);
-  const isInitialized = useAuthStore((s) => s.isInitialized);
-  const location      = useLocation();
+export default function RequireAuth({ children }: { children: React.ReactNode }) {
+  const user          = useAuthStore(s => s.user)
+  const isInitialized = useAuthStore(s => s.isInitialized)
+  const location      = useLocation()
 
-  // ── Initial boot ───────────────────────────────────────────────────────────
-  // Call initialize() once via getState() — not as a reactive selector,
-  // which would cause an infinite re-render loop.
   useEffect(() => {
-    if (!isInitialized) {
-      useAuthStore.getState().initialize();
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // initialize() sekarang idempotent — aman dipanggil berkali-kali.
+    // Pemanggilan kedua (StrictMode) akan langsung return Promise yang sama,
+    // tidak ada dua concurrent getSession().
+    useAuthStore.getState().initialize()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // NOTE: No manual visibility handler needed.
-  // Supabase v2 already listens to visibilitychange internally and refreshes
-  // the token automatically. onAuthStateChange handles TOKEN_REFRESHED,
-  // SIGNED_OUT, and TOKEN_REFRESH_FAILED — all cases are covered.
-
-  // Still booting — show full-screen spinner
   if (!isInitialized) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -38,13 +26,12 @@ export default function RequireAuth({
           <p className="text-xs text-gray-400">Memvalidasi sesi...</p>
         </div>
       </div>
-    );
+    )
   }
 
-  // No user - redirect to login
   if (!user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    return <Navigate to="/login" state={{ from: location }} replace />
   }
 
-  return <>{children}</>;
+  return <>{children}</>
 }

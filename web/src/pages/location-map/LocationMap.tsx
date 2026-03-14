@@ -1,6 +1,3 @@
-// web/src/pages/location-map/LocationMap.tsx
-// Versi baru — data dari Supabase, bukan mockData
-
 import { useEffect, useRef } from "react";
 import {
   Clock,
@@ -17,23 +14,22 @@ import { useZones } from "../../hooks/useZones";
 export default function LocationMap() {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
+
+  // FIX 7: Separate ref arrays for zone circles vs attendance markers so
+  // clearing one set never accidentally removes the other.
+  const zoneLayersRef = useRef<any[]>([]);
+  const attendanceMarkersRef = useRef<any[]>([]);
 
   const { date, setDate, rows, summary, isLoading, error, refetch } =
     useLocationMap();
-
   const { zones } = useZones();
 
   // ── Init map ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
-
-    // Guard against React StrictMode double-mount: Leaflet leaves _leaflet_id
-    // on the DOM node even after .remove() is called asynchronously.
     if ((mapRef.current as any)._leaflet_id) return;
 
     import("leaflet").then((L) => {
-      // Double-check after async import in case of concurrent renders
       if (!mapRef.current || mapInstanceRef.current) return;
       if ((mapRef.current as any)._leaflet_id) return;
 
@@ -58,18 +54,19 @@ export default function LocationMap() {
     };
   }, []);
 
-  // ── Draw zone circles ─────────────────────────────────────────────────────
+  // ── Draw zone circles (only re-runs when zones data changes) ─────────────
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || zones.length === 0) return;
 
     import("leaflet").then((L) => {
-      // Clear existing zone layers
-      markersRef.current.forEach((m) => {
+      // FIX 7: clear only zone layers, never touch attendance markers
+      zoneLayersRef.current.forEach((m) => {
         try {
           m.remove();
         } catch {}
       });
+      zoneLayersRef.current = [];
 
       zones.forEach((zone) => {
         const circle = L.circle([zone.latitude, zone.longitude], {
@@ -81,28 +78,26 @@ export default function LocationMap() {
           radius: zone.radius_meters,
         }).addTo(map);
 
-        markersRef.current.push(circle);
+        zoneLayersRef.current.push(circle);
       });
     });
   }, [zones]);
 
-  // ── Draw attendance markers ───────────────────────────────────────────────
+  // ── Draw attendance markers (only re-runs when rows change) ──────────────
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
     import("leaflet").then((L) => {
-      // Hapus hanya marker (bukan zone circles) — filter by custom flag
-      markersRef.current = markersRef.current.filter((m) => {
-        if (m._isAttendanceMarker) {
+      // FIX 7: clear only attendance markers, zone circles are untouched
+      attendanceMarkersRef.current.forEach((m) => {
+        try {
           m.remove();
-          return false;
-        }
-        return true;
+        } catch {}
       });
+      attendanceMarkersRef.current = [];
 
       rows.forEach((loc) => {
-        // Skip jika tidak ada koordinat
         if (loc.lat === null || loc.lng === null) return;
 
         const color =
@@ -158,24 +153,18 @@ export default function LocationMap() {
             { maxWidth: 240 },
           );
 
-        (marker as any)._isAttendanceMarker = true;
-        markersRef.current.push(marker);
+        attendanceMarkersRef.current.push(marker);
       });
     });
   }, [rows]);
 
-  // Filter rows yang punya koordinat untuk panel kanan
-  const rowsWithCoords = rows.filter((r) => r.lat !== null);
   const rowsNoCoords = rows.filter((r) => r.lat === null);
 
   return (
     <div className="flex h-full relative">
-      {/* Map */}
       <div ref={mapRef} className="flex-1 h-full" />
 
-      {/* Right Panel */}
       <div className="w-[320px] shrink-0 h-full flex flex-col bg-white border-l border-gray-200 z-10">
-        {/* Date filter + refresh */}
         <div className="p-3 border-b border-gray-100 flex items-center gap-2">
           <input
             type="date"
@@ -198,7 +187,6 @@ export default function LocationMap() {
           </button>
         </div>
 
-        {/* Summary */}
         <div className="p-4 border-b border-gray-100">
           <div className="text-sm font-semibold text-gray-800 mb-3">
             Summary
@@ -250,14 +238,12 @@ export default function LocationMap() {
           </div>
         </div>
 
-        {/* Error */}
         {error && (
           <div className="mx-3 mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-600">
             {error}
           </div>
         )}
 
-        {/* Activity feed */}
         <div className="flex-1 overflow-y-auto">
           {!isLoading && rows.length === 0 && !error && (
             <div className="flex flex-col items-center justify-center h-32 text-gray-400">
@@ -272,7 +258,6 @@ export default function LocationMap() {
               key={loc.id}
               className="w-full text-left px-4 py-3 border-b border-gray-50 flex items-start gap-3 hover:bg-gray-50"
             >
-              {/* Avatar */}
               <div
                 className={clsx(
                   "w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-white text-[11px] font-bold",
@@ -325,7 +310,6 @@ export default function LocationMap() {
           ))}
         </div>
 
-        {/* Legend */}
         <div className="p-3 border-t border-gray-100 flex items-center gap-3 flex-wrap">
           <div className="flex items-center gap-1.5">
             <div className="w-3 h-3 rounded-full bg-green-500 border-2 border-white shadow-sm" />

@@ -6,6 +6,7 @@ import {
   type EmployeeFilters, type EmployeeFormData,
 } from '../lib/employeeService'
 import { supabase } from '../lib/supabase'
+import { ensureValidSession } from '../lib/sessionGuard'
 import type { EmployeeWithRelations } from '../lib/employeeService'
 import { useAuthStore } from '../stores/authStore'
 
@@ -13,34 +14,50 @@ import { useAuthStore } from '../stores/authStore'
 export function useEmployeeList(initialFilters: EmployeeFilters = {}) {
   const tenantId = useAuthStore(s => s.tenant?.id)
 
-  const [employees, setEmployees] = useState<EmployeeWithRelations[]>([])
+  const [employees,  setEmployees]  = useState<EmployeeWithRelations[]>([])
   const [totalCount, setTotalCount] = useState(0)
-  const [isLoading, setIsLoading]   = useState(false)
-  const [error, setError]           = useState<string | null>(null)
-  const [filters, setFilters]       = useState<EmployeeFilters>({ page: 1, perPage: 10, ...initialFilters })
+  const [isLoading,  setIsLoading]  = useState(false)
+  const [error,      setError]      = useState<string | null>(null)
+  const [filters,    setFilters]    = useState<EmployeeFilters>({ page: 1, perPage: 10, ...initialFilters })
+
+  const abortRef = useRef<AbortController | null>(null)
 
   const load = useCallback(async (f: EmployeeFilters) => {
+    // Jika tenantId belum ada, jangan set isLoading — tunggu sampai tenantId ada
     if (!tenantId) return
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const { signal } = controller
+
+    // isLoading di-set SETELAH guard tenantId agar tidak stuck saat tenantId undefined
     setIsLoading(true)
     setError(null)
+
     try {
+      const valid = await ensureValidSession()
+      if (signal.aborted) return
+      if (!valid) { setError('Sesi telah berakhir. Silakan refresh halaman.'); return }
+
       const result = await getEmployees(f)
-      if (result.error) {
-        setError(result.error)
-      } else {
-        setEmployees(result.data)
-        setTotalCount(result.count)
-      }
+      if (signal.aborted) return
+
+      if (result.error) setError(result.error)
+      else { setEmployees(result.data); setTotalCount(result.count) }
     } catch (e: any) {
-      setError(e?.message ?? 'Gagal memuat data')
+      if (!signal.aborted) setError(e?.message ?? 'Gagal memuat data')
     } finally {
-      setIsLoading(false)
+      if (!signal.aborted) setIsLoading(false)
     }
   }, [tenantId])
 
-  useEffect(() => { load(filters) }, [filters, load])
+  useEffect(() => {
+    load(filters)
+    return () => { abortRef.current?.abort() }
+  }, [filters, load])
 
-  const refetch = () => load(filters)
+  const refetch = useCallback(() => load(filters), [load, filters])
 
   const setFilter = (patch: Partial<EmployeeFilters>) => {
     setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 1 }))
@@ -51,18 +68,30 @@ export function useEmployeeList(initialFilters: EmployeeFilters = {}) {
 
 // ─── useEmployeeDetail ────────────────────────────────────────────────────────
 export function useEmployeeDetail(id: string | null) {
-  const [employee, setEmployee] = useState<EmployeeWithRelations | null>(null)
+  const [employee,  setEmployee]  = useState<EmployeeWithRelations | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError]         = useState<string | null>(null)
+  const [error,     setError]     = useState<string | null>(null)
+
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (!id) return
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const { signal } = controller
+
     setIsLoading(true)
     getEmployeeById(id).then(({ data, error }) => {
+      if (signal.aborted) return
       setEmployee(data)
       setError(error)
-      setIsLoading(false)
+    }).finally(() => {
+      if (!signal.aborted) setIsLoading(false)
     })
+
+    return () => { abortRef.current?.abort() }
   }, [id])
 
   return { employee, isLoading, error }
@@ -78,8 +107,7 @@ export function useEmployeeMutations(onSuccess?: () => void) {
 
   const create = async (form: EmployeeFormData) => {
     if (!tenantId) return { error: 'Tenant tidak ditemukan' }
-    setIsSaving(true)
-    setSaveError(null)
+    setIsSaving(true); setSaveError(null)
     const { error } = await createEmployee(form, tenantId)
     setIsSaving(false)
     if (error) { setSaveError(error); return { error } }
@@ -88,8 +116,7 @@ export function useEmployeeMutations(onSuccess?: () => void) {
   }
 
   const update = async (id: string, form: Partial<EmployeeFormData>) => {
-    setIsSaving(true)
-    setSaveError(null)
+    setIsSaving(true); setSaveError(null)
     const { error } = await updateEmployee(id, form)
     setIsSaving(false)
     if (error) { setSaveError(error); return { error } }
@@ -105,7 +132,9 @@ export function useEmployeeMutations(onSuccess?: () => void) {
     return { error }
   }
 
-  const toggleActive = async (userId: string, isActive: boolean) => {
+  // Fix: userId bisa undefined jika emp.users null
+  const toggleActive = async (userId: string | undefined, isActive: boolean) => {
+    if (!userId) return { error: 'User ID tidak ditemukan' }
     const { error } = await toggleEmployeeActive(userId, isActive)
     if (!error) onSuccess?.()
     return { error }
@@ -114,22 +143,27 @@ export function useEmployeeMutations(onSuccess?: () => void) {
   return { create, update, remove, toggleActive, isSaving, isDeleting, saveError, setSaveError }
 }
 
-// ─── useEmployeeFormData (departments, positions, etc.) ───────────────────────
+// ─── useEmployeeFormData ──────────────────────────────────────────────────────
 export function useEmployeeFormData() {
   const tenantId = useAuthStore(s => s.tenant?.id)
 
-  const [departments,    setDepartments]    = useState<{ id: string; name: string }[]>([])
-  const [positions,      setPositions]      = useState<{ id: string; name: string }[]>([])
-  const [workLocations,  setWorkLocations]  = useState<{ id: string; name: string }[]>([])
-  const [managers,       setManagers]       = useState<{ id: string; full_name: string }[]>([])
-  const [groups,         setGroups]         = useState<{ id: string; name: string }[]>([])
-  const [isLoading,      setIsLoading]      = useState(false)
-  const fetchedRef = useRef(false)
+  const [departments,   setDepartments]   = useState<{ id: string; name: string }[]>([])
+  const [positions,     setPositions]     = useState<{ id: string; name: string }[]>([])
+  const [workLocations, setWorkLocations] = useState<{ id: string; name: string }[]>([])
+  const [managers,      setManagers]      = useState<{ id: string; full_name: string }[]>([])
+  const [groups,        setGroups]        = useState<{ id: string; name: string }[]>([])
+  const [isLoading,     setIsLoading]     = useState(false)
+
+  // Track tenantId yang sudah di-fetch agar re-fetch jika tenant berubah
+  const fetchedForTenant = useRef<string | null>(null)
 
   useEffect(() => {
-    if (!tenantId || fetchedRef.current) return
-    fetchedRef.current = true
+    if (!tenantId) return
+    if (fetchedForTenant.current === tenantId) return
+
+    fetchedForTenant.current = tenantId
     setIsLoading(true)
+
     Promise.all([
       getDepartments(tenantId),
       getPositions(tenantId),
@@ -148,7 +182,8 @@ export function useEmployeeFormData() {
       setManagers(m.data)
       setGroups(g.data ?? [])
     }).catch(() => {
-      // ignore form data fetch errors — fields will just be empty
+      // Reset agar bisa retry
+      fetchedForTenant.current = null
     }).finally(() => {
       setIsLoading(false)
     })

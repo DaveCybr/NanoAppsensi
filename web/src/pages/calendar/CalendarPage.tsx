@@ -1,7 +1,4 @@
-// web/src/pages/calendar/Calendar.tsx
-// Halaman kalender jadwal — matrix karyawan × hari + assign shift per hari
-
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -15,7 +12,6 @@ import {
   getDaysInMonth,
   startOfMonth,
   getDay,
-  isSameDay,
   isToday,
   addMonths,
   subMonths,
@@ -24,8 +20,6 @@ import { id as localeId } from "date-fns/locale";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../stores/authStore";
 import clsx from "clsx";
-
-// ─── Types ────────────────────────────────────────────────────────────────────
 
 type Shift = {
   id: string;
@@ -41,30 +35,33 @@ type Employee = {
   dept_name?: string;
 };
 
-// schedule[employeeId][dateStr] = shiftId | 'off' | null
 type ScheduleMap = Record<string, Record<string, string | null>>;
-
-// ─── Day Click Popover ────────────────────────────────────────────────────────
 
 function ShiftPicker({
   shifts,
   current,
   onSelect,
   onClose,
-  style,
+  anchorRect,
 }: {
   shifts: Shift[];
   current: string | null;
   onSelect: (shiftId: string | null) => void;
   onClose: () => void;
-  style?: React.CSSProperties;
+  anchorRect: DOMRect;
 }) {
+  // FIX 12: Use a portal-style approach with a normal-flow overlay div so
+  // position:fixed doesn't collapse inside transforms/iframes. The popover
+  // is positioned with inline style using viewport coords from the DOMRect.
+  const top = Math.min(anchorRect.bottom + 4, window.innerHeight - 280);
+  const left = Math.min(anchorRect.left, window.innerWidth - 220);
+
   return (
     <>
       <div className="fixed inset-0 z-40" onClick={onClose} />
       <div
-        className="absolute z-50 bg-white rounded-xl shadow-2xl border border-gray-100 min-w-[180px] overflow-hidden"
-        style={style}
+        className="fixed z-50 bg-white rounded-xl shadow-2xl border border-gray-100 min-w-[180px] overflow-hidden"
+        style={{ top, left }}
       >
         <div className="p-2 space-y-0.5">
           <button
@@ -125,8 +122,6 @@ function ShiftPicker({
   );
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
-
 export default function CalendarPage() {
   const tenantId = useAuthStore((s) => s.tenant?.id);
 
@@ -135,7 +130,7 @@ export default function CalendarPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [schedule, setSchedule] = useState<ScheduleMap>({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null); // 'empId:date'
+  const [saving, setSaving] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [picker, setPicker] = useState<{
     empId: string;
@@ -144,16 +139,18 @@ export default function CalendarPage() {
   } | null>(null);
   const [filterEmp, setFilterEmp] = useState("");
 
-  // Generate all dates in month
-  const daysInMonth = getDaysInMonth(month);
-  const monthStart = startOfMonth(month);
-  const allDates: Date[] = Array.from({ length: daysInMonth }, (_, i) => {
-    const d = new Date(monthStart);
-    d.setDate(i + 1);
-    return d;
-  });
+  // FIX 8: Derive allDates with useMemo so it's stable for a given month
+  // and can safely be used inside fetchSchedule's dependency array.
+  const allDates = useMemo(() => {
+    const daysInMonth = getDaysInMonth(month);
+    const monthStart = startOfMonth(month);
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const d = new Date(monthStart);
+      d.setDate(i + 1);
+      return d;
+    });
+  }, [month]);
 
-  // Fetch reference data
   const fetchBase = useCallback(async () => {
     if (!tenantId) return;
     const [shiftRes, empRes] = await Promise.all([
@@ -179,11 +176,13 @@ export default function CalendarPage() {
     );
   }, [tenantId]);
 
-  // Fetch schedule for current month
+  // FIX 8: allDates is now in the dependency array and is stable (memoized).
+  // Previously allDates was recreated every render, meaning fetchSchedule
+  // could close over a stale version from a previous month.
   const fetchSchedule = useCallback(async () => {
-    if (!tenantId) return;
+    if (!tenantId || allDates.length === 0) return;
     setLoading(true);
-    const start = format(monthStart, "yyyy-MM-dd");
+    const start = format(allDates[0], "yyyy-MM-dd");
     const end = format(allDates[allDates.length - 1], "yyyy-MM-dd");
 
     const { data, error } = await supabase
@@ -208,7 +207,7 @@ export default function CalendarPage() {
     });
     setSchedule(map);
     setLoading(false);
-  }, [tenantId, month]);
+  }, [tenantId, allDates]);
 
   useEffect(() => {
     fetchBase();
@@ -217,13 +216,11 @@ export default function CalendarPage() {
     fetchSchedule();
   }, [fetchSchedule]);
 
-  // Handle cell click
   const handleCellClick = (empId: string, date: Date, e: React.MouseEvent) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setPicker({ empId, dateStr: format(date, "yyyy-MM-dd"), rect });
   };
 
-  // Save assignment
   const handleAssign = async (shiftIdOrOff: string | null) => {
     if (!picker || !tenantId) return;
     const { empId, dateStr } = picker;
@@ -240,7 +237,6 @@ export default function CalendarPage() {
     };
 
     if (shiftIdOrOff === null) {
-      // Delete record
       await supabase
         .from("schedules")
         .delete()
@@ -253,7 +249,6 @@ export default function CalendarPage() {
         .upsert(payload, { onConflict: "tenant_id,employee_id,schedule_date" });
     }
 
-    // Update local state
     setSchedule((prev) => {
       const next = { ...prev };
       if (!next[empId]) next[empId] = {};
@@ -274,7 +269,6 @@ export default function CalendarPage() {
     e.full_name.toLowerCase().includes(filterEmp.toLowerCase()),
   );
 
-  // Weekend columns
   const isWeekend = (d: Date) => {
     const day = getDay(d);
     return day === 0 || day === 6;
@@ -282,7 +276,6 @@ export default function CalendarPage() {
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
       <div className="px-6 py-4 border-b border-gray-100 shrink-0 flex items-center gap-4">
         <div>
           <h1 className="text-xl font-semibold text-gray-900">Jadwal Shift</h1>
@@ -292,7 +285,6 @@ export default function CalendarPage() {
         </div>
 
         <div className="flex items-center gap-2 ml-auto">
-          {/* Month nav */}
           <button
             onClick={() => setMonth((m) => subMonths(m, 1))}
             className="btn-icon"
@@ -329,7 +321,6 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Shift legend */}
       <div className="px-6 py-2 border-b border-gray-50 shrink-0 flex items-center gap-4 flex-wrap">
         <span className="text-[11px] text-gray-400 font-medium">Legenda:</span>
         {shifts.map((s) => (
@@ -349,14 +340,12 @@ export default function CalendarPage() {
         </div>
       </div>
 
-      {/* Error */}
       {error && (
         <div className="mx-6 mt-3 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 flex items-center gap-2 shrink-0">
           <AlertCircle size={14} /> {error}
         </div>
       )}
 
-      {/* Filter */}
       <div className="px-6 py-2 shrink-0">
         <input
           className="input text-sm max-w-xs"
@@ -366,7 +355,6 @@ export default function CalendarPage() {
         />
       </div>
 
-      {/* Matrix table */}
       {loading ? (
         <div className="flex-1 flex items-center justify-center">
           <Loader2 size={24} className="animate-spin text-gray-300" />
@@ -376,11 +364,9 @@ export default function CalendarPage() {
           <table className="border-collapse text-xs w-max min-w-full">
             <thead>
               <tr>
-                {/* Employee column header */}
                 <th className="sticky left-0 z-20 bg-white border-b border-r border-gray-200 px-4 py-2 text-left font-semibold text-gray-600 min-w-[180px]">
                   Karyawan
                 </th>
-                {/* Date headers */}
                 {allDates.map((date) => (
                   <th
                     key={date.toISOString()}
@@ -408,7 +394,6 @@ export default function CalendarPage() {
             <tbody>
               {filteredEmps.map((emp) => (
                 <tr key={emp.id} className="group hover:bg-gray-50/50">
-                  {/* Employee name */}
                   <td className="sticky left-0 z-10 bg-white group-hover:bg-gray-50/50 border-b border-r border-gray-100 px-4 py-2">
                     <div className="font-medium text-gray-800">
                       {emp.full_name}
@@ -419,13 +404,12 @@ export default function CalendarPage() {
                       </div>
                     )}
                   </td>
-                  {/* Day cells */}
                   {allDates.map((date) => {
                     const dateStr = format(date, "yyyy-MM-dd");
                     const val = schedule[emp.id]?.[dateStr] ?? null;
                     const shift = val && val !== "off" ? shiftById(val) : null;
                     const isOff = val === "off";
-                    const isSaving = saving === `${emp.id}:${dateStr}`;
+                    const isSavingCell = saving === `${emp.id}:${dateStr}`;
 
                     return (
                       <td
@@ -438,7 +422,7 @@ export default function CalendarPage() {
                           isToday(date) && "bg-blue-50/40",
                         )}
                       >
-                        {isSaving ? (
+                        {isSavingCell ? (
                           <Loader2
                             size={12}
                             className="animate-spin text-gray-300 mx-auto"
@@ -483,18 +467,13 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* Shift picker popover */}
       {picker && (
         <ShiftPicker
           shifts={shifts}
           current={schedule[picker.empId]?.[picker.dateStr] ?? null}
           onSelect={handleAssign}
           onClose={() => setPicker(null)}
-          style={{
-            top: Math.min(picker.rect.bottom + 4, window.innerHeight - 280),
-            left: Math.min(picker.rect.left, window.innerWidth - 220),
-            position: "fixed",
-          }}
+          anchorRect={picker.rect}
         />
       )}
     </div>
